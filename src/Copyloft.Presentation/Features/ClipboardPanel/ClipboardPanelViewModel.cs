@@ -167,7 +167,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
 
     // The unlock set for repository calls; null when nothing is unlocked.
     private IReadOnlyCollection<long>? Unlocked =>
-        _locks.UnlockedCategoryIds.Count == 0 ? null : _locks.UnlockedCategoryIds;
+        _locks.UnlockedCategoryIds.Count == 0 ? null : [.. _locks.UnlockedCategoryIds];
 
     partial void OnSelectedCategoryFilterChanged(Option<long?>? value)
     {

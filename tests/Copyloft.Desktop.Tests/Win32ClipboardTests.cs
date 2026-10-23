@@ -108,4 +108,30 @@ public sealed class Win32ClipboardTests
             Marshal.FreeHGlobal(memory);
         }
     }
+
+    [Theory]
+    [InlineData(4, int.MinValue, 32)]   // Math.Abs would throw
+    [InlineData(-4, 3, 32)]
+    [InlineData(4, 3, 64)]
+    [SupportedOSPlatform("windows")]
+    public void Bad_header_rejected(int width, int height, short bits)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Win32 memory");
+        var header = new byte[40 + 64];
+        BitConverter.TryWriteBytes(header.AsSpan(0), 40);
+        BitConverter.TryWriteBytes(header.AsSpan(4), width);
+        BitConverter.TryWriteBytes(header.AsSpan(8), height);
+        BitConverter.TryWriteBytes(header.AsSpan(14), bits);
+        var memory = Marshal.AllocHGlobal(header.Length);
+        try
+        {
+            Marshal.Copy(header, 0, memory, header.Length);
+
+            Assert.Null(Win32Clipboard.ReadBounded(memory, (ulong)header.Length));
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(memory);
+        }
+    }
 }

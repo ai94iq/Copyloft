@@ -240,11 +240,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         await RefreshCategoriesAsync();
     }
 
+    // Locks go first: a crash in between must leave a password with no locks, never locked
+    // categories with no password to open them.
     public async Task RemoveLockPasswordAsync()
     {
-        _passwords.Remove();
-        _locks.Reset();
         await _categories.ClearLocksAsync(CancellationToken.None);
+        _locks.Reset();
+        _passwords.Remove();
         NotifyLockPasswordChanged();
         await RefreshCategoriesAsync();
     }

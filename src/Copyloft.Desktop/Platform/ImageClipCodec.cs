@@ -108,7 +108,9 @@ public static class ImageClipCodec
     internal static int PixelOffset(byte[] dib, int headerSize)
     {
         const int BiBitfields = 3, BiAlphaBitfields = 6;
-        if (headerSize < 40) return headerSize + (BitConverter.ToInt16(dib, 10) <= 8 ? (1 << BitConverter.ToInt16(dib, 10)) * 3 : 0);
+        // Palette sizes are bounded (at most 256 entries), so a hostile header cannot push the
+        // offset anywhere it likes.
+        if (headerSize < 40) return headerSize + (BitConverter.ToInt16(dib, 10) is >= 1 and <= 8 and var coreBits ? (1 << coreBits) * 3 : 0);
 
         var bitCount = BitConverter.ToInt16(dib, 14);
         var compression = BitConverter.ToInt32(dib, 16);
@@ -119,7 +121,7 @@ public static class ImageClipCodec
             BiAlphaBitfields => 16,
             _ => 0,
         };
-        var paletteEntries = colorsUsed > 0 ? colorsUsed : bitCount <= 8 ? 1 << bitCount : 0;
+        var paletteEntries = colorsUsed is > 0 and <= 256 ? colorsUsed : bitCount is >= 1 and <= 8 ? 1 << bitCount : 0;
         return headerSize + masks + paletteEntries * 4;
     }
 

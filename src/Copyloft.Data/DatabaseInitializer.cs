@@ -63,9 +63,9 @@ public sealed class DatabaseInitializer(
         {
             connection.Open();
             var version = connection.ExecuteScalar<long>("PRAGMA user_version;");
-            var attach = string.Create(CultureInfo.InvariantCulture,
-                $"ATTACH DATABASE '{target.Replace("'", "''")}' AS encrypted KEY '{options.EncryptionKey!.Replace("'", "''")}';");
-            connection.Execute(attach);
+            // Parameters, so the key never sits in SQL text that an error message could log.
+            connection.Execute(
+                "ATTACH DATABASE @target AS encrypted KEY @key;", new { target, key = options.EncryptionKey });
             connection.Execute("SELECT sqlcipher_export('encrypted');");
             // sqlcipher_export copies schema and data but not user_version.
             connection.Execute(string.Create(CultureInfo.InvariantCulture,
@@ -159,7 +159,7 @@ public sealed class DatabaseInitializer(
     private static List<Migration> LoadMigrations()
     {
         var assembly = typeof(DatabaseInitializer).Assembly;
-        return assembly.GetManifestResourceNames()
+        var migrations = assembly.GetManifestResourceNames()
             .Where(n => n.StartsWith(Prefix, StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.Ordinal))
             .Select(n =>
             {
@@ -169,6 +169,20 @@ public sealed class DatabaseInitializer(
             })
             .OrderBy(m => m.Version)
             .ToList();
+        CheckVersions([.. migrations.Select(m => (m.Version, m.Name))]);
+        return migrations;
+    }
+
+    // Two files with one version would apply in name order and only one would be recorded; a
+    // gap would hide a missing file. Either is a packaging mistake, so startup stops on it.
+    internal static void CheckVersions(IReadOnlyList<(int Version, string Name)> migrations)
+    {
+        for (var i = 0; i < migrations.Count; i++)
+        {
+            if (migrations[i].Version != i + 1)
+                throw new InvalidOperationException(
+                    $"Migration {migrations[i].Name} has version {migrations[i].Version}; expected {i + 1}");
+        }
     }
 
     private sealed record Migration(int Version, string Name, string Sql);

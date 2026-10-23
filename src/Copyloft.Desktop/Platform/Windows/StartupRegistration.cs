@@ -37,9 +37,9 @@ public sealed class StartupRegistration(ILogger<StartupRegistration> log) : ISta
     internal static void Apply(bool enabled, string? executable, Action<string, string> set, Action<string> delete)
     {
         delete(LegacyValueName);
-        if (enabled)
-            set(ValueName, $"\"{executable}\"");
-        else
+        if (!enabled)
             delete(ValueName);
+        else if (executable is not null)     // no path: leave the value rather than write ""
+            set(ValueName, $"\"{executable}\"");
     }
 }

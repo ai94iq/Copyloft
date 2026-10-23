@@ -42,6 +42,28 @@ public sealed class LegacyKeyringTests
         Assert.False(keyring.TryLookup(out _));
     }
 
+    // A marked key with the Copyloft entry empty and the ClipShelf one unreadable must stop
+    // startup, not make a new key that leaves the history unreadable.
+    [Fact]
+    public void Marked_key_unreadable_throws()
+    {
+        var dir = Directory.CreateTempSubdirectory("copyloft-legacy").FullName;
+        try
+        {
+            var path = Path.Combine(dir, "key.bin");
+            File.WriteAllText(path, KeyringKeyStore.KeyringMarker);
+            var keyring = new LegacyKeyring(new Keyring(), new Keyring { Available = false });
+
+            Assert.Throws<KeyringUnavailableException>(() =>
+                new KeyringKeyStore(keyring, Microsoft.Extensions.Logging.Abstractions.NullLogger<KeyringKeyStore>.Instance).LoadOrCreate(path));
+            Assert.Equal(KeyringKeyStore.KeyringMarker, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     private sealed class Keyring : ISecretKeyring
     {
         public bool Available { get; init; } = true;

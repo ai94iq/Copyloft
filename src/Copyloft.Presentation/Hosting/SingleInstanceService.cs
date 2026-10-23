@@ -173,13 +173,16 @@ public sealed class SingleInstanceService : IDisposable
         lock (_gate)
         {
             handlers = _commandReceived;
-            if (handlers is null) _undelivered.Enqueue(command);
+            // Startup subscribes within seconds; a few commands cover that, more are dropped.
+            if (handlers is null && _undelivered.Count < MaxUndelivered) _undelivered.Enqueue(command);
         }
         handlers?.Invoke(this, command);
     }
 
     // Commands are short flags; a longer line is dropped rather than buffered without limit.
     internal const int MaxCommandLength = 256;
+
+    private const int MaxUndelivered = 8;
 
     internal static async Task<string?> ReadCommandAsync(TextReader reader, CancellationToken ct)
     {
@@ -223,7 +226,17 @@ public sealed class SingleInstanceService : IDisposable
             }
             catch (IOException)
             {
-                // A client that disconnected early; keep listening.
+                // A client that disconnected early; reset the pipe and keep listening, with a pause
+                // so a pipe that keeps failing cannot spin this loop.
+                try
+                {
+                    if (_server!.IsConnected) _server.Disconnect();
+                    await Task.Delay(50, _cts.Token);
+                }
+                catch (Exception ex) when (ex is IOException or InvalidOperationException or OperationCanceledException or ObjectDisposedException)
+                {
+                    if (_cts.IsCancellationRequested) return;
+                }
             }
         }
     }

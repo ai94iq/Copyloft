@@ -209,6 +209,8 @@ internal static class Win32Clipboard
         var width = BitConverter.ToInt32(header, 4);
         var height = BitConverter.ToInt32(header, 8);
         var bitCount = BitConverter.ToUInt16(header, 14);            // biBitCount
+        // A DIB is at most 32 bpp and has a positive width; int.MinValue height has no Math.Abs.
+        if (width <= 0 || height is 0 or int.MinValue || bitCount is 0 or > 32) return null;
         // The masks and palette between header and pixels count too, and rows pad to 4 bytes;
         // missing either left the block short and undecodable (BI_BITFIELDS screenshots lost 12).
         var stride = ((long)Math.Abs(width) * bitCount + 31) / 32 * 4;

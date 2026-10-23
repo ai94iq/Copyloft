@@ -11,7 +11,7 @@ public sealed class ClipExportService(IClipRepository repository, ICategoryLockS
 {
     public async Task<int> ExportAsync(string path, ClipExportFormat format, CancellationToken ct)
     {
-        var unlocked = locks.UnlockedCategoryIds.Count == 0 ? null : locks.UnlockedCategoryIds;
+        var unlocked = locks.UnlockedCategoryIds.Count == 0 ? null : locks.UnlockedCategoryIds.ToArray();
         var rows = new List<ClipExportRow>();
         PageCursor? after = null;
         while (true)
