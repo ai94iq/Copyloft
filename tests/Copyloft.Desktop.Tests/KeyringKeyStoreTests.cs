@@ -50,6 +50,40 @@ public sealed class KeyringKeyStoreTests : IDisposable
         Assert.Equal(KeyringKeyStore.KeyringMarker, File.ReadAllText(KeyPath));
     }
 
+    // A keyring that answers but says no must not end with the key in a plain file.
+    [Fact]
+    public void Refused_store_throws()
+    {
+        Assert.Throws<KeyringUnavailableException>(() => Store(new FakeKeyring { Refuses = true }).LoadOrCreate(KeyPath));
+        Assert.False(File.Exists(KeyPath));
+    }
+
+    [Fact]
+    public void File_key_moves_to_keyring()
+    {
+        var key = Store(new FakeKeyring { Available = false }).LoadOrCreate(KeyPath);
+        var keyring = new FakeKeyring();
+
+        Assert.Equal(key, Store(keyring).LoadOrCreate(KeyPath));
+
+        Assert.Equal(key, keyring.Secret);
+        Assert.Equal(KeyringKeyStore.KeyringMarker, File.ReadAllText(KeyPath));
+        Assert.Equal(key, Store(keyring).LoadOrCreate(KeyPath));
+    }
+
+    // Some other key already in the keyring: replacing it could orphan what it opens.
+    [Fact]
+    public void Other_keyring_key_keeps_file()
+    {
+        var key = Store(new FakeKeyring { Available = false }).LoadOrCreate(KeyPath);
+        var keyring = new FakeKeyring { Secret = "other" };
+
+        Assert.Equal(key, Store(keyring).LoadOrCreate(KeyPath));
+
+        Assert.Equal("other", keyring.Secret);
+        Assert.Equal(key, File.ReadAllText(KeyPath));
+    }
+
     // The real binding against whatever the machine has: answers either way, never crashes.
     [Fact]
     [System.Runtime.Versioning.SupportedOSPlatform("linux")]
@@ -65,7 +99,8 @@ public sealed class KeyringKeyStoreTests : IDisposable
     private sealed class FakeKeyring : ISecretKeyring
     {
         public bool Available { get; init; } = true;
-        public string? Secret { get; private set; }
+        public bool Refuses { get; init; }
+        public string? Secret { get; set; }
 
         public bool TryLookup(out string? secret)
         {
@@ -75,9 +110,9 @@ public sealed class KeyringKeyStoreTests : IDisposable
 
         public bool TryStore(string secret)
         {
-            if (Available)
+            if (Available && !Refuses)
                 Secret = secret;
-            return Available;
+            return Available && !Refuses;
         }
     }
 }

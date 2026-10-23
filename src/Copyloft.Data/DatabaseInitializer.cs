@@ -11,8 +11,10 @@ public sealed class DatabaseInitializer(
     public void BackupAndMigrate()
     {
         Directory.CreateDirectory(options.BackupDirectory);
+        if (options.EncryptionKey is not null) FinishInterruptedEncryption();
         if (options.EncryptionKey is not null && IsPlaintext(options.DatabasePath))
             EncryptExistingDatabase();
+        if (options.EncryptionKey is not null) RemovePlaintextBackups();
 
         var migrations = LoadMigrations();
         using var connection = factory.Open();
@@ -71,15 +73,67 @@ public sealed class DatabaseInitializer(
             connection.Execute("DETACH DATABASE encrypted;");
         }
 
+        // The plaintext file steps aside before the encrypted one takes its place, so it can be
+        // zeroed instead of left in freed blocks; FinishInterruptedEncryption covers a crash
+        // between the two moves.
         SqliteConnection.ClearAllPools();
-        File.Move(target, database, overwrite: true);
-        File.Delete(database + "-wal");   // plaintext sidecars must not survive
-        File.Delete(database + "-shm");
+        File.Move(database, PlaintextLeftover, overwrite: true);
+        File.Move(target, database);
+        Shred(PlaintextLeftover);
+        Shred(database + "-wal");   // plaintext sidecars must not survive
+        Shred(database + "-shm");
 
-        // Plaintext backups would keep readable copies of the history around.
-        foreach (var backup in BackupFiles().ToList()) backup.Delete();
+        // Backups from before encryption would keep readable copies of the history around.
+        foreach (var backup in BackupFiles().ToList()) Shred(backup.FullName);
 
         log.LogInformation("Encrypted the existing database");
+    }
+
+    private string PlaintextLeftover => options.DatabasePath + ".plaintext";
+
+    // A crash between the two moves leaves no database but the plaintext one aside: put it back
+    // so encryption runs again. With the encrypted database in place, the leftover only needs zeroing.
+    private void FinishInterruptedEncryption()
+    {
+        if (!File.Exists(PlaintextLeftover)) return;
+
+        if (File.Exists(options.DatabasePath)) Shred(PlaintextLeftover);
+        else File.Move(PlaintextLeftover, options.DatabasePath);
+    }
+
+    // Every start, not only right after encrypting: an interrupted run, or a backup copied back
+    // by hand, must not keep plaintext history in the backups folder.
+    private void RemovePlaintextBackups()
+    {
+        foreach (var backup in BackupFiles().Where(file => IsPlaintext(file.FullName)).ToList())
+        {
+            Shred(backup.FullName);
+            log.LogInformation("Removed a plaintext backup ({Name})", backup.Name);
+        }
+    }
+
+    // Best effort: zeroes a file before deleting it, so the plaintext is not simply left in the
+    // freed blocks. SSD wear levelling and copy-on-write file systems can still keep old copies.
+    // A file that cannot be removed is logged and left, never a failed start.
+    private void Shred(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
+            {
+                var zeros = new byte[81920];
+                for (var left = stream.Length; left > 0; left -= zeros.Length)
+                    stream.Write(zeros, 0, (int)Math.Min(zeros.Length, left));
+                stream.Flush(flushToDisk: true);
+            }
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remove {Name}; it may still hold plaintext history", Path.GetFileName(path));
+        }
     }
 
     private void Backup(SqliteConnection connection, string reason)
