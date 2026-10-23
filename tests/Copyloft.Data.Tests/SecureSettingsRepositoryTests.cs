@@ -5,7 +5,7 @@ namespace Copyloft.Data.Tests;
 public sealed class SecureSettingsRepositoryTests
 {
     [Fact]
-    public void A_value_is_read_back_replaced_and_removed()
+    public void Get_set_remove()
     {
         using var db = new TempDatabase(TempDatabase.Key);
         var store = new SecureSettingsRepository(db.Factory);
@@ -21,7 +21,7 @@ public sealed class SecureSettingsRepositoryTests
 
     // The point of the table: the file on disk does not show the value.
     [Fact]
-    public void Values_are_not_readable_in_the_database_file()
+    public void Values_not_in_plain_file()
     {
         using var db = new TempDatabase(TempDatabase.Key);
         new SecureSettingsRepository(db.Factory).Set("LockPasswordHash", "needle-in-the-file");

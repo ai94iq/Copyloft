@@ -14,7 +14,7 @@ public sealed class LockPasswordServiceTests
     public LockPasswordServiceTests() => _service = new SettingsService(_file, new AppSettings());
 
     [Fact]
-    public void The_hash_is_kept_in_the_database_not_the_settings_file()
+    public void Hash_saved_in_db()
     {
         New().Set("1234");
 
@@ -24,7 +24,7 @@ public sealed class LockPasswordServiceTests
     }
 
     [Fact]
-    public void A_hash_from_an_older_version_moves_out_of_the_settings_file()
+    public void Legacy_hash_moves_to_db()
     {
         _service.Update(_service.Current with { LockPasswordHash = PasswordHash.Create("1234") });
 
@@ -37,7 +37,7 @@ public sealed class LockPasswordServiceTests
 
     // Someone who can write settings.json must not be able to replace the password.
     [Fact]
-    public void A_hash_planted_in_the_settings_file_does_not_replace_the_real_one()
+    public void Planted_hash_is_ignored()
     {
         New().Set("1234");
         _service.Update(_service.Current with { LockPasswordHash = PasswordHash.Create("evil") });
@@ -50,7 +50,7 @@ public sealed class LockPasswordServiceTests
 
     // Deleting the hash from settings.json used to remove the password.
     [Fact]
-    public void Clearing_the_settings_file_keeps_the_password()
+    public void Cleared_file_keeps_password()
     {
         New().Set("1234");
         _service.Update(new AppSettings());
@@ -59,7 +59,7 @@ public sealed class LockPasswordServiceTests
     }
 
     [Fact]
-    public void The_first_wrong_tries_cost_nothing()
+    public void First_tries_are_free()
     {
         var passwords = New();
         passwords.Set("1234");
@@ -71,7 +71,7 @@ public sealed class LockPasswordServiceTests
     }
 
     [Fact]
-    public void Too_many_wrong_tries_refuse_even_the_right_one_until_the_wait_ends()
+    public void Throttle_blocks_right_password()
     {
         var passwords = New();
         passwords.Set("1234");
@@ -86,7 +86,7 @@ public sealed class LockPasswordServiceTests
     }
 
     [Fact]
-    public void Each_wrong_try_after_a_wait_doubles_the_next_one_up_to_the_cap()
+    public void Wait_doubles_up_to_cap()
     {
         var passwords = New();
         passwords.Set("1234");
@@ -107,7 +107,7 @@ public sealed class LockPasswordServiceTests
 
     // Restarting the app is not a way around the wait.
     [Fact]
-    public void The_wait_survives_a_restart()
+    public void Wait_survives_restart()
     {
         var passwords = New();
         passwords.Set("1234");
@@ -120,7 +120,7 @@ public sealed class LockPasswordServiceTests
     }
 
     [Fact]
-    public void A_clock_set_back_does_not_stretch_the_wait_past_the_cap()
+    public void Clock_rollback_caps_wait()
     {
         var passwords = New();
         passwords.Set("1234");

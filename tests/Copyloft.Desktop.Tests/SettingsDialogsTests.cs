@@ -123,7 +123,7 @@ public sealed class SettingsDialogsTests
 
     // Deleting a locked category frees its clips into the open history.
     [Fact]
-    public Task Deleting_a_locked_category_needs_the_password() => Ui.Run(async () =>
+    public Task Locked_delete_needs_password() => Ui.Run(async () =>
     {
         var (kit, window) = await Open(passwordSet: true, new Category(3, "Bank", IsLocked: true));
 

@@ -34,7 +34,7 @@ public sealed class PasswordPromptTests
     });
 
     [Fact]
-    public Task During_the_wait_after_wrong_tries_the_error_says_how_long() => Ui.Run(() =>
+    public Task Wait_shows_seconds_left() => Ui.Run(() =>
     {
         var window = DialogDriver.Window();
         var result = PasswordPrompt.VerifyAsync(window, _ => false, () => TimeSpan.FromSeconds(29.2));

@@ -1086,7 +1086,7 @@ public sealed class ClipboardPanelViewModelTests
     }
 
     [Fact]
-    public async Task A_relock_drops_the_rows_it_hides_without_a_reload()
+    public async Task Relock_drops_hidden_rows()
     {
         var vm = await LoadWithUnlockedSecretAsync();
         vm.SelectedItem = vm.Items.Single(item => item.CategoryId == 5);
@@ -1102,7 +1102,7 @@ public sealed class ClipboardPanelViewModelTests
     }
 
     [Fact]
-    public async Task A_row_hidden_by_a_relock_cannot_be_picked()
+    public async Task Hidden_row_not_picked()
     {
         var vm = await LoadWithUnlockedSecretAsync();
         var secret = vm.Items.Single(item => item.CategoryId == 5);
@@ -1117,7 +1117,7 @@ public sealed class ClipboardPanelViewModelTests
     }
 
     [Fact]
-    public async Task A_failed_copy_does_not_paste_and_says_so()
+    public async Task Failed_copy_does_not_paste()
     {
         _repository.GetRecentAsync(null, 50, Arg.Any<CancellationToken>())
             .Returns(new List<ClipListItem> { Item(1, "one") });

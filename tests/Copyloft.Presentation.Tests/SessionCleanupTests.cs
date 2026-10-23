@@ -13,7 +13,7 @@ public sealed class SessionCleanupTests
 
     // Screen lock, user switch and sleep relock whatever the lock-on settings say.
     [Fact]
-    public void Stepping_away_locks_every_category_again()
+    public void Away_relocks()
     {
         New(new AppSettings { LockOnExit = false, LockOnShutdown = false, LockOnMinimize = false });
 
@@ -23,7 +23,7 @@ public sealed class SessionCleanupTests
     }
 
     [Fact]
-    public void Session_end_relocks_only_with_lock_on_shutdown()
+    public void Session_end_follows_setting()
     {
         New(new AppSettings { LockOnShutdown = false });
 

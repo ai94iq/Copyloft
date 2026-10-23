@@ -88,7 +88,7 @@ public sealed class FlyoutListTests
 
     // A slow write (an image load) that ends after the user closed the flyout sends no keystroke.
     [Fact]
-    public Task A_pick_that_finishes_after_the_flyout_closed_does_not_paste() => Ui.Run(() =>
+    public Task Late_pick_does_not_paste() => Ui.Run(() =>
     {
         var kit = OpenWith("first");
         var write = new TaskCompletionSource<bool>();

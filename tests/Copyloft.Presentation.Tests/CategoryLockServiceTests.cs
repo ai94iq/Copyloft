@@ -18,7 +18,7 @@ public sealed class CategoryLockServiceTests
         _service = new SettingsService(_file, new AppSettings { LockOnExit = false });
 
     [Fact]
-    public void Unlocking_is_written_to_the_database_not_the_settings_file()
+    public void Unlock_saved_in_db()
     {
         var locks = New();
 
@@ -29,7 +29,7 @@ public sealed class CategoryLockServiceTests
     }
 
     [Fact]
-    public void Unlocks_survive_a_restart_in_the_same_boot()
+    public void Restart_keeps_unlocks()
     {
         New().Unlock(7);
 
@@ -40,7 +40,7 @@ public sealed class CategoryLockServiceTests
 
     // A crash skips the exit relock; the next start makes up for it.
     [Fact]
-    public void With_lock_on_exit_nothing_survives_a_restart()
+    public void Restart_relocks()
     {
         New().Unlock(7);
         _service.Update(_service.Current with { LockOnExit = true });
@@ -53,7 +53,7 @@ public sealed class CategoryLockServiceTests
 
     // A power loss skips the shutdown relock; a new boot makes up for it.
     [Fact]
-    public void With_lock_on_shutdown_nothing_survives_a_reboot()
+    public void Reboot_relocks()
     {
         New().Unlock(7);
 
@@ -63,7 +63,7 @@ public sealed class CategoryLockServiceTests
     }
 
     [Fact]
-    public void Without_lock_on_shutdown_unlocks_survive_a_reboot()
+    public void Reboot_keeps_unlocks_if_off()
     {
         _service.Update(_service.Current with { LockOnShutdown = false });
         New().Unlock(7);
@@ -75,7 +75,7 @@ public sealed class CategoryLockServiceTests
 
     // An older version kept the list in settings.json, where anyone could add to it.
     [Fact]
-    public void Unlocks_in_the_settings_file_are_dropped_not_trusted()
+    public void Legacy_unlocks_dropped()
     {
         _service.Update(_service.Current with { UnlockedCategories = [7] });
 
@@ -86,7 +86,7 @@ public sealed class CategoryLockServiceTests
     }
 
     [Fact]
-    public void An_unreadable_list_counts_as_nothing_unlocked()
+    public void Bad_list_unlocks_nothing()
     {
         _secure.Set("UnlockedCategories", "not json");
 

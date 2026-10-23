@@ -18,7 +18,7 @@ public sealed class SessionWatcherTests
     [InlineData(PowerBroadcast, 0x12, false)]  // PBT_APMRESUMEAUTOMATIC
     [InlineData(0x0016u, 0x7, false)]          // WM_ENDSESSION is Ending, not Locking
     [SupportedOSPlatform("windows")]
-    public void Stepping_away_is_lock_switch_disconnect_or_sleep(uint message, int code, bool expected)
+    public void Away_messages(uint message, int code, bool expected)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows messages");
 

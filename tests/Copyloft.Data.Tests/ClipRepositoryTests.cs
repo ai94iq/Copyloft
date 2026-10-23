@@ -437,7 +437,7 @@ public sealed class ClipRepositoryTests
     }
 
     [Fact]
-    public async Task Row_actions_leave_a_clip_in_a_locked_category_untouched()
+    public async Task Row_actions_skip_locked_clips()
     {
         using var db = new TempDatabase();
         var repo = New(db);
