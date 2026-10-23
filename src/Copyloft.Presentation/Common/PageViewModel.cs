@@ -53,6 +53,7 @@ public abstract partial class PageViewModel : ObservableObject
     protected void ReloadOnChange(params string[] areas) =>
         WeakReferenceMessenger.Default.Register<PageViewModel, DataChanged>(this, (vm, message) =>
         {
+            vm.OnDataChanged(message);
             if (vm.IsViewVisible && areas.Contains(message.Area) &&
                 vm._loadedOnce && vm.ReloadCommand.CanExecute(null))
                 vm.ReloadCommand.Execute(null);
@@ -61,9 +62,15 @@ public abstract partial class PageViewModel : ObservableObject
     protected void ReloadQuietlyOnChange(params string[] areas) =>
         WeakReferenceMessenger.Default.Register<PageViewModel, DataChanged>(this, (vm, message) =>
         {
+            vm.OnDataChanged(message);
             if (vm.IsViewVisible && areas.Contains(message.Area) && vm._loadedOnce)
                 _ = vm.ReloadQuietlyAsync();
         });
+
+    // Every change, visible or not, before any reload; for state that must not wait for a reload.
+    protected virtual void OnDataChanged(DataChanged change)
+    {
+    }
 
     // The view keeps this in step with its visibility; hidden views refresh on show instead.
     public bool IsViewVisible { get; set; } = true;

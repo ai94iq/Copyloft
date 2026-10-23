@@ -55,7 +55,7 @@ public sealed class ClipboardServiceTests
     [Fact]
     public async Task The_change_our_own_write_causes_is_not_captured_but_the_next_one_is()
     {
-        _service.WriteText("from history");
+        await _service.WriteText("from history");
         _backend.Text = "from history";
         await _backend.ChangeAsync(_service);
 
@@ -70,7 +70,7 @@ public sealed class ClipboardServiceTests
     public async Task A_failed_write_does_not_swallow_the_next_change()
     {
         _backend.WritesSucceed = false;
-        _service.WriteText("lost");
+        await _service.WriteText("lost");
         await _service.WriteImageAsync([1, 2, 3]);
 
         _backend.Text = "real copy";

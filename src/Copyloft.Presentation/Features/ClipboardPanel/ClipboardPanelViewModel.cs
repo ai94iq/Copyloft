@@ -16,6 +16,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
     private readonly IClipboardWriter _clipboard;
     private readonly IDateFormatter _dates;
     private readonly HashSet<long> _lockedCategoryIds = [];
+    private readonly HashSet<long> _lockableCategoryIds = [];
     private CancellationTokenSource? _searchCts;
     private CancellationTokenSource? _noticeCts;
     private readonly List<PendingDelete> _pendingDeletes = [];
@@ -97,10 +98,12 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
         try
         {
             _lockedCategoryIds.Clear();
+            _lockableCategoryIds.Clear();
             CategoryFilterOptions.Clear();
             CategoryFilterOptions.Add(new Option<long?>(null, Tr.Get("History_FilterAll")));
             foreach (var category in categories)
             {
+                if (category.IsLocked) _lockableCategoryIds.Add(category.Id);
                 var locked = category.IsLocked && !_locks.UnlockedCategoryIds.Contains(category.Id);
                 if (locked) _lockedCategoryIds.Add(category.Id);
                 CategoryFilterOptions.Add(new Option<long?>(
@@ -125,6 +128,44 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
     }
 
     public bool VerifyLockPassword(string password) => _passwords.Verify(password);
+
+    // Rows on screen may predate a relock, and hidden views skip reloads: a lock change drops
+    // the rows it hides at once, and a category change (which can lock one) re-reads the flags first.
+    protected override void OnDataChanged(DataChanged change)
+    {
+        if (change.Area == "lock") DropLockedRows();
+        else if (change.Area == "category") _ = RefreshLockedCategoriesAsync();
+    }
+
+    private async Task RefreshLockedCategoriesAsync()
+    {
+        try
+        {
+            await RefreshCategoryFilterAsync();
+            DropLockedRows();
+        }
+        catch (Exception ex)
+        {
+            LogQuietFailure(ex);
+        }
+    }
+
+    private bool IsHiddenByLock(ClipItemViewModel item) =>
+        item.CategoryId is long id && _lockableCategoryIds.Contains(id) && !_locks.UnlockedCategoryIds.Contains(id);
+
+    private void DropLockedRows()
+    {
+        var hidden = Items.Where(IsHiddenByLock).ToList();
+        if (hidden.Count == 0) return;
+
+        foreach (var item in hidden) Items.Remove(item);
+        if (SelectedItem is { } selected && hidden.Contains(selected)) SelectedItem = null;
+        RebuildGroups();
+    }
+
+    // The unlock set for repository calls; null when nothing is unlocked.
+    private IReadOnlyCollection<long>? Unlocked =>
+        _locks.UnlockedCategoryIds.Count == 0 ? null : _locks.UnlockedCategoryIds;
 
     partial void OnSelectedCategoryFilterChanged(Option<long?>? value)
     {
@@ -209,7 +250,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
 
     // Assignment comes back as a "clip" change, so open lists refresh themselves.
     public Task AssignCategoryAsync(ClipItemViewModel item, long? categoryId) =>
-        _repository.AssignCategoryAsync(item.Id, categoryId, CancellationToken.None);
+        _repository.AssignCategoryAsync(item.Id, categoryId, CancellationToken.None, Unlocked);
 
     public Task<IReadOnlyList<Category>> GetCategoriesAsync() =>
         _categories.GetCategoriesAsync(CancellationToken.None);
@@ -246,11 +287,13 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
         return false;
     }
 
-    private void ShowCopyNotice()
+    private void ShowCopyNotice() => ShowNotice(Tr.Get("History_Copied"));
+
+    private void ShowNotice(string text)
     {
         _noticeCts?.Cancel();
         var cts = _noticeCts = new CancellationTokenSource();
-        CopyNotice = Tr.Get("History_Copied");
+        CopyNotice = text;
         _ = ClearCopyNoticeAsync(cts.Token);
     }
 
@@ -317,6 +360,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
                     // Re-read as deep as the user already scrolled, so a quiet refresh does not
                     // collapse the list back to the first page.
                     var loaded = Items.Count;
+                    var generation = _loadGeneration;
                     var first = await FetchPageAsync(null, CancellationToken.None);
                     var all = first.ToList();
                     var cursor = first.Count > 0 ? first[^1].Cursor : null;
@@ -329,7 +373,12 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
                         hasMore = page.Count == PageSize;
                     }
 
-                    ApplyFirstPage(all, await CountAsync(CancellationToken.None), hasMore);
+                    var total = await CountAsync(CancellationToken.None);
+
+                    // A newer load replaced the list meanwhile; this older result may predate a relock.
+                    if (generation != _loadGeneration) continue;
+
+                    ApplyFirstPage(all, total, hasMore);
                     MarkQuietLoadCompleted(Items.Count > 0);
                 }
                 catch (Exception ex)
@@ -358,30 +407,39 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
             return;
         }
 
-        // Image clips load their full image before it goes back to the clipboard.
-        if (item.HasImage)
-        {
-            _ = ActivateImageAsync(item);
-            return;
-        }
+        // A row left over from before a relock is not copied.
+        if (IsHiddenByLock(item)) return;
 
-        _clipboard.WriteText(item.Text);
-        ShowCopyNotice();
-        ItemActivated?.Invoke(this, EventArgs.Empty);
+        // Image clips load their full image before it goes back to the clipboard.
+        _ = item.HasImage ? ActivateImageAsync(item) : ActivateTextAsync(item);
     }
+
+    private async Task ActivateTextAsync(ClipItemViewModel item) =>
+        CompleteActivation(await _clipboard.WriteText(item.Text));
 
     private async Task ActivateImageAsync(ClipItemViewModel item)
     {
-        var image = await _repository.GetImageAsync(item.Id, CancellationToken.None);
+        var image = await _repository.GetImageAsync(item.Id, CancellationToken.None, Unlocked);
         if (image is null) return;
 
-        await _clipboard.WriteImageAsync(image);
+        CompleteActivation(await _clipboard.WriteImageAsync(image));
+    }
+
+    // Paste-back follows only a write that landed; otherwise it would paste whatever was there before.
+    private void CompleteActivation(bool written)
+    {
+        if (!written)
+        {
+            ShowNotice(Tr.Get("Clip_CopyFailed"));
+            return;
+        }
+
         ShowCopyNotice();
         ItemActivated?.Invoke(this, EventArgs.Empty);
     }
 
     public Task TogglePinAsync(ClipItemViewModel item) =>
-        _repository.SetPinnedAsync(item.Id, !item.IsPinned, CancellationToken.None);
+        _repository.SetPinnedAsync(item.Id, !item.IsPinned, CancellationToken.None, Unlocked);
 
     // Delete is deferred: the row disappears at once and the database delete runs when the
     // undo window closes, so a misclick never loses a clip.
@@ -423,7 +481,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
         NotifyPendingDeleteChanged();
         try
         {
-            await _repository.DeleteAsync(id, CancellationToken.None);
+            await _repository.DeleteAsync(id, CancellationToken.None, Unlocked);
         }
         catch (Exception ex)
         {
@@ -468,7 +526,12 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
 
     protected override async Task<bool> LoadCoreAsync(CancellationToken ct)
     {
+        var generation = _loadGeneration;
         var (items, total) = await LoadItemsAsync(ct);
+
+        // A newer load already replaced the list; this older result may predate a relock.
+        if (generation != _loadGeneration) return Items.Count > 0;
+
         ApplyFirstPage(items, total, items.Count == PageSize);
         IsConfirmingClear = false;
         return Items.Count > 0;
@@ -481,19 +544,17 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
     private async Task<IReadOnlyList<ClipListItem>> FetchPageAsync(PageCursor? cursor, CancellationToken ct)
     {
         var categoryId = SelectedCategoryFilter?.Value;
-        var unlocked = _locks.UnlockedCategoryIds.Count == 0 ? null : _locks.UnlockedCategoryIds;
         return string.IsNullOrWhiteSpace(SearchText)
-            ? await _repository.GetRecentAsync(cursor, PageSize, ct, categoryId, unlocked)
-            : await _repository.SearchAsync(SearchText, cursor, PageSize, ct, categoryId, unlocked);
+            ? await _repository.GetRecentAsync(cursor, PageSize, ct, categoryId, Unlocked)
+            : await _repository.SearchAsync(SearchText, cursor, PageSize, ct, categoryId, Unlocked);
     }
 
     // The total for the current query, matching FetchPageAsync's filters.
     private Task<int> CountAsync(CancellationToken ct)
     {
         var categoryId = SelectedCategoryFilter?.Value;
-        var unlocked = _locks.UnlockedCategoryIds.Count == 0 ? null : _locks.UnlockedCategoryIds;
         var query = string.IsNullOrWhiteSpace(SearchText) ? null : SearchText;
-        return _repository.CountAsync(query, categoryId, unlocked, ct);
+        return _repository.CountAsync(query, categoryId, Unlocked, ct);
     }
 
     // First page of a fresh query: replaces the list and resets paging.
@@ -669,7 +730,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
         var texts = Items.Where(item => item.IsSelected && !item.HasImage).Select(item => item.Text).ToArray();
         if (texts.Length == 0) return;
 
-        _clipboard.WriteText(string.Join("\r\n", texts));
+        _ = _clipboard.WriteText(string.Join("\r\n", texts));
         ShowCopyNotice();
         IsSelecting = false;
         SelectionCopied?.Invoke(this, EventArgs.Empty);
@@ -698,7 +759,7 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
         {
             _pendingDeletes.Remove(pending);
             pending.Cts.Cancel();
-            await _repository.DeleteAsync(pending.Id, CancellationToken.None);
+            await _repository.DeleteAsync(pending.Id, CancellationToken.None, Unlocked);
         }
 
         ClearPendingDeletes();                        // the rest were just removed by the bulk clear

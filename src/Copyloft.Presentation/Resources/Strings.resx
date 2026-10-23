@@ -27,6 +27,7 @@
   <data name="Category_NewTitle" xml:space="preserve"><value>New category</value></data>
   <data name="Category_None" xml:space="preserve"><value>No category</value></data>
   <data name="Category_RenameTitle" xml:space="preserve"><value>Rename category</value></data>
+  <data name="Clip_CopyFailed" xml:space="preserve"><value>Couldn't copy, try again</value></data>
   <data name="Clip_Deleted" xml:space="preserve"><value>Clip deleted</value></data>
   <data name="Clip_Time_Days" xml:space="preserve"><value>{0}d</value></data>
   <data name="Clip_Time_Hours" xml:space="preserve"><value>{0}h</value></data>

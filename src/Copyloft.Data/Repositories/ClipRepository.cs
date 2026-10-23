@@ -40,12 +40,14 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
             changes.Notify(new DataChanged("clip"));
         }, ct);
 
-    public Task<byte[]?> GetImageAsync(long id, CancellationToken ct) =>
+    public Task<byte[]?> GetImageAsync(
+        long id, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null) =>
         Task.Run<byte[]?>(() =>
         {
             using var connection = factory.Open();
             return connection.ExecuteScalar<byte[]?>(
-                "SELECT ImageBytes FROM Clip WHERE Id = @id;", new { id });
+                $"SELECT ImageBytes FROM Clip WHERE Id = @id AND {Visible("Clip")};",
+                new { id, unlocked = Unlocked(unlockedCategories) });
         }, ct);
 
     public Task<IReadOnlyList<ClipListItem>> GetRecentAsync(
@@ -55,7 +57,7 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
         {
             using var connection = factory.Open();
             return Read(connection,
-                """
+                $"""
                 SELECT c.Id, c.Text, c.AppName, c.IsPinned, c.CreatedAtUtc, c.CategoryId,
                        cat.Name AS CategoryName, c.ThumbnailBytes
                 FROM Clip c
@@ -64,9 +66,7 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
                    OR c.CreatedAtUtc < @key
                    OR (c.CreatedAtUtc = @key AND c.Id < @id))
                   AND (@categoryId IS NULL OR c.CategoryId = @categoryId)
-                  AND (c.CategoryId IS NULL
-                       OR c.CategoryId NOT IN (SELECT Id FROM Category WHERE IsLocked = 1)
-                       OR c.CategoryId IN (SELECT value FROM json_each(@unlocked)))
+                  AND {Visible("c")}
                 ORDER BY c.CreatedAtUtc DESC, c.Id DESC
                 LIMIT @pageSize
                 """,
@@ -80,7 +80,7 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
         {
             using var connection = factory.Open();
             return Read(connection,
-                """
+                $"""
                 SELECT c.Id, c.Text, c.AppName, c.IsPinned, c.CreatedAtUtc, c.CategoryId,
                        cat.Name AS CategoryName, c.ThumbnailBytes
                 FROM Clip c
@@ -88,9 +88,7 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
                 WHERE c.Text LIKE @like ESCAPE '\'
                   AND (@key IS NULL OR c.CreatedAtUtc < @key OR (c.CreatedAtUtc = @key AND c.Id < @id))
                   AND (@categoryId IS NULL OR c.CategoryId = @categoryId)
-                  AND (c.CategoryId IS NULL
-                       OR c.CategoryId NOT IN (SELECT Id FROM Category WHERE IsLocked = 1)
-                       OR c.CategoryId IN (SELECT value FROM json_each(@unlocked)))
+                  AND {Visible("c")}
                 ORDER BY c.CreatedAtUtc DESC, c.Id DESC
                 LIMIT @pageSize
                 """,
@@ -103,45 +101,52 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
         {
             using var connection = factory.Open();
             return connection.ExecuteScalar<int>(
-                """
+                $"""
                 SELECT COUNT(*)
                 FROM Clip c
                 WHERE (@like IS NULL OR c.Text LIKE @like ESCAPE '\')
                   AND (@categoryId IS NULL OR c.CategoryId = @categoryId)
-                  AND (c.CategoryId IS NULL
-                       OR c.CategoryId NOT IN (SELECT Id FROM Category WHERE IsLocked = 1)
-                       OR c.CategoryId IN (SELECT value FROM json_each(@unlocked)))
+                  AND {Visible("c")}
                 """,
                 new
                 {
                     like = query is null ? null : $"%{EscapeLike(query)}%",
                     categoryId,
-                    unlocked = JsonSerializer.Serialize(unlockedCategories ?? Array.Empty<long>()),
+                    unlocked = Unlocked(unlockedCategories),
                 });
         }, ct);
 
-    public Task SetPinnedAsync(long id, bool pinned, CancellationToken ct) =>
-        Task.Run(() =>
-        {
-            using var connection = factory.Open();
-            connection.Execute("UPDATE Clip SET IsPinned = @pinned WHERE Id = @id;", new { id, pinned = pinned ? 1 : 0 });
-            changes.Notify(new DataChanged("clip", id));
-        }, ct);
-
-    public Task AssignCategoryAsync(long clipId, long? categoryId, CancellationToken ct) =>
+    // Row actions take a clip id from a list that may predate a relock, so each one re-checks
+    // visibility in the same statement: a clip in a locked category is left untouched.
+    public Task SetPinnedAsync(
+        long id, bool pinned, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null) =>
         Task.Run(() =>
         {
             using var connection = factory.Open();
             connection.Execute(
-                "UPDATE Clip SET CategoryId = @categoryId WHERE Id = @id;", new { id = clipId, categoryId });
-            changes.Notify(new DataChanged("clip", clipId));
+                $"UPDATE Clip SET IsPinned = @pinned WHERE Id = @id AND {Visible("Clip")};",
+                new { id, pinned = pinned ? 1 : 0, unlocked = Unlocked(unlockedCategories) });
+            changes.Notify(new DataChanged("clip", id));
         }, ct);
 
-    public Task DeleteAsync(long id, CancellationToken ct) =>
+    public Task AssignCategoryAsync(
+        long clipId, long? categoryId, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null) =>
         Task.Run(() =>
         {
             using var connection = factory.Open();
-            connection.Execute("DELETE FROM Clip WHERE Id = @id;", new { id });
+            connection.Execute(
+                $"UPDATE Clip SET CategoryId = @categoryId WHERE Id = @id AND {Visible("Clip")};",
+                new { id = clipId, categoryId, unlocked = Unlocked(unlockedCategories) });
+            changes.Notify(new DataChanged("clip", clipId));
+        }, ct);
+
+    public Task DeleteAsync(long id, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null) =>
+        Task.Run(() =>
+        {
+            using var connection = factory.Open();
+            connection.Execute(
+                $"DELETE FROM Clip WHERE Id = @id AND {Visible("Clip")};",
+                new { id, unlocked = Unlocked(unlockedCategories) });
             changes.Notify(new DataChanged("clip", id));
         }, ct);
 
@@ -223,8 +228,19 @@ public sealed class ClipRepository(SqliteConnectionFactory factory, IDataChangeN
             pageSize,
             like,
             categoryId,
-            unlocked = JsonSerializer.Serialize(unlockedCategories ?? Array.Empty<long>()),
+            unlocked = Unlocked(unlockedCategories),
         };
+
+    // A clip is visible when it has no category, its category is not locked, or the caller has
+    // unlocked that category. Every read and every row action uses this one rule.
+    private static string Visible(string table) =>
+        $"({table}.CategoryId IS NULL" +
+        $" OR {table}.CategoryId NOT IN (SELECT Id FROM Category WHERE IsLocked = 1)" +
+        $" OR {table}.CategoryId IN (SELECT value FROM json_each(@unlocked)))";
+
+    // A snapshot: callers pass the live unlock set, which the UI thread can change meanwhile.
+    private static string Unlocked(IReadOnlyCollection<long>? unlockedCategories) =>
+        JsonSerializer.Serialize(unlockedCategories?.ToArray() ?? []);
 
     private static string Iso(DateTimeOffset value) =>
         value.ToUniversalTime().ToString("O", CultureInfo.InvariantCulture);
