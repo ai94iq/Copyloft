@@ -157,4 +157,36 @@ public sealed class SingleInstanceServiceTests
             SingleInstanceService.DefaultName,
             StringComparison.Ordinal);
     }
+
+    // Only this user's processes may reach the pipe, but even they get no unbounded buffer.
+    [Theory]
+    [InlineData("--toggle\r\n", "--toggle")]
+    [InlineData("--history", "--history")]
+    public async Task Command_is_read(string sent, string expected)
+    {
+        var command = await SingleInstanceService.ReadCommandAsync(new StringReader(sent), TestContext.Current.CancellationToken);
+
+        Assert.Equal(expected, command);
+    }
+
+    [Fact]
+    public async Task Long_command_dropped()
+    {
+        var sent = new string('x', SingleInstanceService.MaxCommandLength + 1) + "\n";
+
+        Assert.Null(await SingleInstanceService.ReadCommandAsync(new StringReader(sent), TestContext.Current.CancellationToken));
+    }
+
+    // Without XDG_RUNTIME_DIR, a shared /tmp would let another user squat the lock.
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("linux")]
+    public void Linux_lock_not_in_tmp()
+    {
+        Assert.SkipUnless(OperatingSystem.IsLinux() && Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") is null, "Linux without XDG_RUNTIME_DIR");
+
+        var directory = Path.GetDirectoryName(SingleInstanceService.LockPath(NewName()))!;
+
+        Assert.NotEqual(Path.TrimEndingDirectorySeparator(Path.GetTempPath()), directory);
+        Assert.Equal(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, File.GetUnixFileMode(directory));
+    }
 }
