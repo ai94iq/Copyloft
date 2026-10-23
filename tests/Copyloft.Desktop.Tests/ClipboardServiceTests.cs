@@ -79,11 +79,33 @@ public sealed class ClipboardServiceTests
         await _repository.Received(1).AddOrBumpAsync("real copy", "editor", Arg.Any<DateTimeOffset>(), Arg.Any<CancellationToken>());
     }
 
+    [Fact]
+    public async Task Marked_copy_skipped()
+    {
+        _backend.Excluded = true;
+        _backend.Text = "hunter2";
+        _backend.Png = [1, 2, 3];
+
+        await _backend.ChangeAsync(_service);
+
+        await _repository.DidNotReceiveWithAnyArgs().AddOrBumpAsync(default!, default, default, TestContext.Current.CancellationToken);
+        await _repository.DidNotReceiveWithAnyArgs().AddImageAsync(default!, default!, default, default, TestContext.Current.CancellationToken);
+    }
+
+    [Theory]
+    [InlineData("org.nspasteboard.ConcealedType", true)]
+    [InlineData("org.nspasteboard.TransientType", true)]
+    [InlineData("x-kde-passwordManagerHint", true)]
+    [InlineData("public.utf8-plain-text", false)]
+    public void Marker_names(string format, bool excluded) =>
+        Assert.Equal(excluded, AvaloniaClipboardBackend.IsExcluded(["text/plain", format]));
+
     private sealed class FakeBackend : IClipboardBackend
     {
         public string? Text { get; set; }
         public byte[]? Png { get; set; }
         public bool WritesSucceed { get; set; } = true;
+        public bool Excluded { get; set; }
 
         public event EventHandler? Changed;
 
@@ -93,6 +115,7 @@ public sealed class ClipboardServiceTests
             await service.Pending;
         }
 
+        public Task<bool> IsExcludedAsync() => Task.FromResult(Excluded);
         public Task<string?> ReadTextAsync() => Task.FromResult(Text);
         public Task<byte[]?> ReadImagePngAsync() => Task.FromResult(Png);
         public Task<bool> WriteTextAsync(string text) => Task.FromResult(WritesSucceed);

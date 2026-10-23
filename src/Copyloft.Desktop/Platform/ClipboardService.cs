@@ -69,6 +69,9 @@ public sealed class ClipboardService : IClipboardMonitor, IDisposable
     {
         try
         {
+            // A password manager marked this copy as not to be recorded.
+            if (await _backend.IsExcludedAsync()) return;
+
             // An image copy wins over any text formats the same copy may carry.
             if (await _backend.ReadImagePngAsync() is { } png)
             {

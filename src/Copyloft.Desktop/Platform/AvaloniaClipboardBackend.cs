@@ -16,11 +16,29 @@ public sealed class AvaloniaClipboardBackend(Func<IClipboard?> clipboard, string
     // On the UI thread.
     public void NotifyChanged() => Changed?.Invoke(this, EventArgs.Empty);
 
+    // Markers password managers put next to a secret: the nspasteboard.org types on macOS, and
+    // KDE's hint (KeePassXC, KWallet) on X11.
+    private static readonly HashSet<string> ExcludedFormats =
+    [
+        "org.nspasteboard.ConcealedType",
+        "org.nspasteboard.TransientType",
+        "x-kde-passwordManagerHint",
+    ];
+
+    internal static bool IsExcluded(IEnumerable<string> formatNames) => formatNames.Any(ExcludedFormats.Contains);
+
+    public async Task<bool> IsExcludedAsync() =>
+        clipboard() is { } board && IsExcluded((await board.GetDataFormatsAsync()).Select(format => format.Identifier));
+
     public async Task<string?> ReadTextAsync() =>
         clipboard() is { } board ? await board.TryGetTextAsync() : null;
 
+    // Larger than any real screenshot: such an image is skipped rather than stored. Avalonia has
+    // already transferred it by then; the bound keeps it out of the history and the decoder.
+    internal const int MaxPngBytes = 128 * 1024 * 1024;
+
     public async Task<byte[]?> ReadImagePngAsync() =>
-        clipboard() is { } board ? await board.TryGetValueAsync(_png) : null;
+        clipboard() is { } board && await board.TryGetValueAsync(_png) is { Length: <= MaxPngBytes } png ? png : null;
 
     public async Task<bool> WriteTextAsync(string text)
     {

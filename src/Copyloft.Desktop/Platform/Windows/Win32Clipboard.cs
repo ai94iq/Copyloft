@@ -24,11 +24,12 @@ internal static class Win32Clipboard
                     var handle = NativeMethods.GetClipboardData(NativeMethods.ClipboardFormatUnicodeText);
                     if (handle == IntPtr.Zero) return null;
 
+                    var allocation = (ulong)NativeMethods.GlobalSize(handle);
                     var pointer = NativeMethods.GlobalLock(handle);
                     if (pointer == IntPtr.Zero) return null;
                     try
                     {
-                        return Marshal.PtrToStringUni(pointer);
+                        return ReadText(pointer, ReadableBytes(pointer, Math.Min(allocation, MaxClipBytes)));
                     }
                     finally
                     {
@@ -43,6 +44,54 @@ internal static class Win32Clipboard
 
             if (attempt >= Retries) return null;
             Thread.Sleep(RetryDelayMs);
+        }
+    }
+
+    // True when the copying app asked clipboard tools not to record this copy, as password
+    // managers do: ExcludeClipboardContentFromMonitorProcessing or "Clipboard Viewer Ignore" by
+    // being there, CanIncludeInClipboardHistory by holding a DWORD 0.
+    public static bool IsExcluded()
+    {
+        var exclude = NativeMethods.RegisterClipboardFormat("ExcludeClipboardContentFromMonitorProcessing");
+        var ignore = NativeMethods.RegisterClipboardFormat("Clipboard Viewer Ignore");
+        var history = NativeMethods.RegisterClipboardFormat("CanIncludeInClipboardHistory");
+
+        for (var attempt = 0; ; attempt++)
+        {
+            if (NativeMethods.OpenClipboard(IntPtr.Zero))
+            {
+                try
+                {
+                    if (Available(exclude) || Available(ignore)) return true;
+                    return Available(history) && ReadDword(history) == 0;
+                }
+                finally
+                {
+                    NativeMethods.CloseClipboard();
+                }
+            }
+
+            if (attempt >= Retries) return false;
+            Thread.Sleep(RetryDelayMs);
+        }
+    }
+
+    private static bool Available(uint format) => format != 0 && NativeMethods.IsClipboardFormatAvailable(format);
+
+    private static int? ReadDword(uint format)
+    {
+        var handle = NativeMethods.GetClipboardData(format);
+        if (handle == IntPtr.Zero) return null;
+
+        var pointer = NativeMethods.GlobalLock(handle);
+        if (pointer == IntPtr.Zero) return null;
+        try
+        {
+            return ReadableBytes(pointer, sizeof(int)) == sizeof(int) ? Marshal.ReadInt32(pointer) : null;
+        }
+        finally
+        {
+            NativeMethods.GlobalUnlock(handle);
         }
     }
 
@@ -85,7 +134,7 @@ internal static class Win32Clipboard
                     if (pointer == IntPtr.Zero) return null;
                     try
                     {
-                        return ReadBounded(pointer, allocation);
+                        return ReadBounded(pointer, ReadableBytes(pointer, allocation));
                     }
                     finally
                     {
@@ -103,6 +152,44 @@ internal static class Win32Clipboard
         }
     }
 
+    // Sanity bound for one clip; anything larger is not a screenshot or a paste.
+    private const long MaxClipBytes = 128L * 1024 * 1024;
+
+    // How many bytes from pointer on are committed, readable memory, up to limit. GlobalSize
+    // describes the allocation, not what is mapped, and reading past the mapping is an access
+    // violation .NET cannot catch.
+    internal static ulong ReadableBytes(IntPtr pointer, ulong limit)
+    {
+        ulong total = 0;
+        var address = pointer;
+        var infoSize = (nuint)Marshal.SizeOf<NativeMethods.MemoryBasicInformation>();
+        while (total < limit)
+        {
+            if (NativeMethods.VirtualQuery(address, out var info, infoSize) == 0) break;
+            if (info.State != NativeMethods.MemCommit || info.Protect == 0 ||
+                (info.Protect & (NativeMethods.PageNoAccess | NativeMethods.PageGuard)) != 0) break;
+
+            var regionEnd = (ulong)info.BaseAddress + info.RegionSize;
+            total += regionEnd - (ulong)address;
+            address = (IntPtr)(long)regionEnd;
+        }
+
+        return Math.Min(total, limit);
+    }
+
+    // CF_UNICODETEXT up to its first null character, and never past the readable bytes: a block
+    // without one would otherwise be scanned until the read faults.
+    internal static string? ReadText(IntPtr pointer, ulong readable)
+    {
+        var chars = (int)(readable / sizeof(char));
+        if (chars == 0) return null;
+
+        var text = new char[chars];
+        Marshal.Copy(pointer, text, 0, chars);
+        var end = Array.IndexOf(text, '\0');
+        return new string(text, 0, end < 0 ? chars : end);
+    }
+
     // Reads a CF_DIB block with the size cross-checked against the block's own header. GlobalSize
     // can overstate the allocation for handles rendered by another app, and trusting it walked off
     // the mapped memory in Marshal.Copy - an access violation .NET cannot catch, so the process
@@ -110,7 +197,7 @@ internal static class Win32Clipboard
     internal static byte[]? ReadBounded(IntPtr pointer, ulong allocation)
     {
         const int HeaderSize = 40;                       // BITMAPINFOHEADER
-        const long MaxImageBytes = 128L * 1024 * 1024;   // sanity bound; anything larger is not a screenshot
+        const long MaxImageBytes = MaxClipBytes;
 
         if (allocation < HeaderSize || allocation > MaxImageBytes) return null;
 

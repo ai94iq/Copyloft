@@ -20,7 +20,7 @@ public static class ImageClipCodec
 
         try
         {
-            using var bitmap = SKBitmap.Decode(WrapDibAsBmp(dib, headerSize));
+            using var bitmap = Decode(WrapDibAsBmp(dib, headerSize));
             return bitmap is null ? null : EncodePng(bitmap);
         }
         catch (Exception)
@@ -33,7 +33,7 @@ public static class ImageClipCodec
     {
         try
         {
-            using var source = SKBitmap.Decode(png);
+            using var source = Decode(png);
             if (source is null) return null;
 
             var scale = Math.Min(1.0, Math.Min(
@@ -55,7 +55,7 @@ public static class ImageClipCodec
     {
         try
         {
-            using var decoded = SKBitmap.Decode(png);
+            using var decoded = Decode(png);
             if (decoded is null) return null;
 
             using var bgra = new SKBitmap(new SKImageInfo(
@@ -81,6 +81,19 @@ public static class ImageClipCodec
         {
             return null;
         }
+    }
+
+    // 64 megapixels, about 256 MiB decoded: room for a screenshot across three 4K screens. A
+    // small file can claim far more (a PNG bomb), so the size is read from the header first.
+    internal const long MaxPixels = 64L * 1024 * 1024;
+
+    private static SKBitmap? Decode(byte[] encoded)
+    {
+        using var stream = new SKMemoryStream(encoded);
+        using var codec = SKCodec.Create(stream);
+        if (codec is null || (long)codec.Info.Width * codec.Info.Height > MaxPixels) return null;
+
+        return SKBitmap.Decode(codec);
     }
 
     private static byte[] EncodePng(SKBitmap bitmap)

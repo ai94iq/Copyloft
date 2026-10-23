@@ -105,8 +105,42 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static extern bool IsClipboardFormatAvailable(uint format);
 
+    [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode, EntryPoint = "RegisterClipboardFormatW")]
+    internal static extern uint RegisterClipboardFormat(string name);
+
     [DllImport("kernel32.dll", SetLastError = true)]
     internal static extern nuint GlobalSize(IntPtr memory);
+
+    internal const uint MemCommit = 0x1000;
+    internal const uint MemReserve = 0x2000;
+    internal const uint MemRelease = 0x8000;
+    internal const uint PageNoAccess = 0x01;
+    internal const uint PageReadWrite = 0x04;
+    internal const uint PageGuard = 0x100;
+
+    // MEMORY_BASIC_INFORMATION, 64-bit layout (the Windows build is win-x64).
+    [StructLayout(LayoutKind.Sequential)]
+    internal struct MemoryBasicInformation
+    {
+        public IntPtr BaseAddress;
+        public IntPtr AllocationBase;
+        public uint AllocationProtect;
+        public ushort PartitionId;
+        public nuint RegionSize;
+        public uint State;
+        public uint Protect;
+        public uint Type;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern nuint VirtualQuery(IntPtr address, out MemoryBasicInformation info, nuint length);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    internal static extern IntPtr VirtualAlloc(IntPtr address, nuint size, uint type, uint protect);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool VirtualFree(IntPtr address, nuint size, uint type);
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern IntPtr SetClipboardData(uint format, IntPtr memory);

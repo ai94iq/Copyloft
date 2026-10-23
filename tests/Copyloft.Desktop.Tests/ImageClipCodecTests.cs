@@ -110,4 +110,20 @@ public sealed class ImageClipCodecTests
         BitConverter.TryWriteBytes(dib.AsSpan(20), pixels);
         return dib;
     }
+
+    // 9000 x 9000 at 1 bpp is a 10 MB block that would decode to 324 MB.
+    [Fact]
+    public void Huge_image_skipped()
+    {
+        const int side = 9000, stride = (side + 31) / 32 * 4;
+        var dib = new byte[40 + 8 + stride * side];
+        BitConverter.TryWriteBytes(dib.AsSpan(0), 40);
+        BitConverter.TryWriteBytes(dib.AsSpan(4), side);
+        BitConverter.TryWriteBytes(dib.AsSpan(8), side);
+        BitConverter.TryWriteBytes(dib.AsSpan(12), (short)1);
+        BitConverter.TryWriteBytes(dib.AsSpan(14), (short)1);
+        Assert.True((long)side * side > ImageClipCodec.MaxPixels);
+
+        Assert.Null(ImageClipCodec.ToPng(dib));
+    }
 }

@@ -69,4 +69,43 @@ public sealed class Win32ClipboardTests
             Marshal.FreeHGlobal(memory);
         }
     }
+
+    // One committed page followed by a reserved one: a block whose size claim runs past the
+    // mapping, as another app's rendered handle can.
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Read_stops_at_mapping()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Win32 memory");
+        var block = NativeMethods.VirtualAlloc(IntPtr.Zero, 8192, NativeMethods.MemReserve, NativeMethods.PageNoAccess);
+        NativeMethods.VirtualAlloc(block, 4096, NativeMethods.MemCommit, NativeMethods.PageReadWrite);
+        try
+        {
+            Marshal.Copy(Enumerable.Repeat((byte)'a', 4096).ToArray(), 0, block, 4096);   // "愡..." with no null
+
+            Assert.Equal(4096UL, Win32Clipboard.ReadableBytes(block, 1 << 20));
+            Assert.Equal(50UL, Win32Clipboard.ReadableBytes(block + 100, 50));
+            Assert.Equal(2048, Win32Clipboard.ReadText(block, Win32Clipboard.ReadableBytes(block, 1 << 20))!.Length);
+        }
+        finally
+        {
+            NativeMethods.VirtualFree(block, 0, NativeMethods.MemRelease);
+        }
+    }
+
+    [Fact]
+    [SupportedOSPlatform("windows")]
+    public void Text_ends_at_null()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Win32 memory");
+        var memory = Marshal.StringToHGlobalUni("hi\0junk");
+        try
+        {
+            Assert.Equal("hi", Win32Clipboard.ReadText(memory, 14));
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(memory);
+        }
+    }
 }
