@@ -4,27 +4,26 @@ on:
   push:
     tags: ['v*']
 
+# Each job asks for what it needs; only the jobs that publish to the release may write.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   release:
     runs-on: windows-latest
-    # Secrets cannot be referenced in step `if` conditions, so the token is lifted to a
-    # job-level variable and the submit step checks that variable instead.
-    env:
-      WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
@@ -81,10 +80,22 @@ jobs:
 
       # Needs a repository secret WINGET_TOKEN (a GitHub token with public_repo). Without it the
       # submission is skipped, and the manifests above stay refreshed for a manual submission.
+      # Secrets cannot be read in a step `if`, and a job-level variable would hand the token to
+      # the build and packaging steps too, so only these two steps see it.
+      - name: Check for the winget token
+        id: winget
+        shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
+        run: |
+          "present=$(-not [string]::IsNullOrEmpty($env:WINGET_TOKEN))" >> $env:GITHUB_OUTPUT
+
       - name: Submit to winget
-        if: ${{ env.WINGET_TOKEN != '' }}
+        if: ${{ steps.winget.outputs.present == 'True' }}
         continue-on-error: true
         shell: pwsh
+        env:
+          WINGET_TOKEN: ${{ secrets.WINGET_TOKEN }}
         run: |
           winget install --id Microsoft.WingetCreate -e --accept-source-agreements --accept-package-agreements
           $version = $env:GITHUB_REF_NAME.TrimStart('v')
@@ -94,17 +105,19 @@ jobs:
   release-linux:
     needs: release
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
       - name: Cache NuGet packages
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nuget/packages
           key: nuget-${{ runner.os }}-${{ hashFiles('Directory.Packages.props') }}
@@ -125,12 +138,14 @@ jobs:
   release-macos:
     needs: release
     runs-on: macos-latest
+    permissions:
+      contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
         with:
           global-json-file: global.json
 
