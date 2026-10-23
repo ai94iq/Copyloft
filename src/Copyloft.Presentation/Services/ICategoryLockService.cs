@@ -1,6 +1,6 @@
 namespace Copyloft.Presentation.Services;
 
-// Remembers which locked categories were unlocked in this run of the app; nothing is written to disk.
+// Remembers which locked categories are unlocked; kept in the encrypted database.
 public interface ICategoryLockService
 {
     IReadOnlyCollection<long> UnlockedCategoryIds { get; }
@@ -9,6 +9,6 @@ public interface ICategoryLockService
 
     void Lock(long categoryId);
 
-    // Forgets every session unlock; used when the password is removed.
+    // Forgets every unlock; used by the lock-on events and when the password is removed.
     void Reset();
 }

@@ -129,6 +129,8 @@ public sealed partial class ClipboardPanelViewModel : PageViewModel, IIncrementa
 
     public bool VerifyLockPassword(string password) => _passwords.Verify(password);
 
+    public TimeSpan LockPasswordRetryAfter => _passwords.RetryAfter;
+
     // Rows on screen may predate a relock, and hidden views skip reloads: a lock change drops
     // the rows it hides at once, and a category change (which can lock one) re-reads the flags first.
     protected override void OnDataChanged(DataChanged change)

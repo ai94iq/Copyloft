@@ -40,7 +40,7 @@ public sealed record AppSettings
     // When true, double-clicking the tray icon opens the full history window.
     public bool OpenHistoryOnDoubleClick { get; init; } = true;
 
-    // PBKDF2 hash of the app password; null means exports and category locks are open.
+    // Read once to move an older version's password hash into the database, then always null.
     public string? LockPasswordHash { get; init; }
 
     // When true, unlocked categories lock again on the matching event.
@@ -50,7 +50,7 @@ public sealed record AppSettings
 
     public bool LockOnShutdown { get; init; } = true;
 
-    // Categories unlocked in this run; cleared by a lock-on event, kept otherwise.
+    // Left by older versions; startup clears it without trusting it (the list is in the database).
     public long[] UnlockedCategories { get; init; } = [];
 
     [JsonConverter(typeof(JsonStringEnumConverter<TrayIconKind>))]

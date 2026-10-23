@@ -16,6 +16,15 @@ internal static class NativeMethods
     internal const uint MessageEndSession = 0x0016;
     internal const uint MessageSettingChange = 0x001A;
     internal const uint MessageThemeChanged = 0x031A;
+    internal const uint MessageSessionChange = 0x02B1;
+    internal const uint MessagePowerBroadcast = 0x0218;
+
+    // WM_WTSSESSION_CHANGE and WM_POWERBROADCAST codes that mean the user stepped away.
+    internal const int SessionConsoleDisconnect = 0x1;
+    internal const int SessionRemoteDisconnect = 0x4;
+    internal const int SessionLock = 0x7;
+    internal const int PowerSuspend = 0x4;
+    internal const uint NotifyForThisSession = 0;
 
     internal const uint ClipboardFormatUnicodeText = 13;
     internal const uint ClipboardFormatDib = 8;
@@ -52,6 +61,10 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     internal static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("wtsapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static extern bool WTSRegisterSessionNotification(IntPtr window, uint flags);
     internal const uint MonitorDefaultToNearest = 0x00000002;
     internal const byte VirtualKeyControl = 0x11;
     internal const byte VirtualKeyMenu = 0x12;

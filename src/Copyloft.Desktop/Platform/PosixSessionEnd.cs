@@ -24,6 +24,9 @@ public sealed class PosixSessionEnd : ISessionEnd, IDisposable
 
     public event EventHandler? Ending;
 
+    // Not raised yet: screen lock and sleep would need logind (D-Bus) or NSWorkspace observers.
+    public event EventHandler? Locking { add { } remove { } }
+
     internal void OnTerminate()
     {
         Ending?.Invoke(this, EventArgs.Empty);

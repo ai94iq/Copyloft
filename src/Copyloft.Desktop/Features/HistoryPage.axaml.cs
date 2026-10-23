@@ -116,7 +116,7 @@ public sealed partial class HistoryPage : UserControl
     {
         if (ViewModel.SelectedCategoryFilter?.Value is not long id || !ViewModel.IsCategoryFilterLocked) return false;
         if (InlineDialog.IsOpenIn(this)) return false;
-        if (!await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword)) return false;
+        if (!await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter)) return false;
 
         _lastFilterValue = id;
         await ViewModel.UnlockCategoryAsync(id);

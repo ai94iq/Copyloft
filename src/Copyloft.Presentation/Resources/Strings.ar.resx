@@ -103,6 +103,7 @@
   <data name="Password_TooShort" xml:space="preserve"><value>استخدم 4 أحرف على الأقل.</value></data>
   <data name="Password_VerifyTitle" xml:space="preserve"><value>كلمة المرور</value></data>
   <data name="Password_Wrong" xml:space="preserve"><value>كلمة المرور غير صحيحة.</value></data>
+  <data name="Password_Wait" xml:space="preserve"><value>محاولات خاطئة كثيرة. حاول مرة أخرى بعد {0} ثانية.</value></data>
   <data name="Retention_Day" xml:space="preserve"><value>يوم واحد</value></data>
   <data name="Retention_Forever" xml:space="preserve"><value>إلى الأبد</value></data>
   <data name="Retention_Month" xml:space="preserve"><value>30 يومًا</value></data>

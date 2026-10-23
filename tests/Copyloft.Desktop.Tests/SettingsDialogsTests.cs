@@ -121,6 +121,23 @@ public sealed class SettingsDialogsTests
         await kit.Categories.Received().DeleteAsync(3, Arg.Any<CancellationToken>());
     });
 
+    // Deleting a locked category frees its clips into the open history.
+    [Fact]
+    public Task Deleting_a_locked_category_needs_the_password() => Ui.Run(async () =>
+    {
+        var (kit, window) = await Open(passwordSet: true, new Category(3, "Bank", IsLocked: true));
+
+        DialogDriver.Click(RowButton(kit, "delete"));
+        Fill(window, "wrong");
+        Assert.NotNull(InlineDialog.OpenIn(window));
+        Fill(window, "1234");
+        Dispatcher.UIThread.RunJobs();
+        await kit.Categories.DidNotReceive().DeleteAsync(3, Arg.Any<CancellationToken>());
+        Fill(window);
+
+        await kit.Categories.Received().DeleteAsync(3, Arg.Any<CancellationToken>());
+    });
+
     [Fact]
     public Task Export_with_a_password_asks_for_it_first() => Ui.Run(async () =>
     {

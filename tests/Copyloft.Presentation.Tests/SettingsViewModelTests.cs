@@ -14,6 +14,7 @@ namespace Copyloft.Presentation.Tests;
 public sealed class SettingsViewModelTests
 {
     private readonly FakeSettingsStore _store = new();
+    private readonly FakeSecureSettings _secure = new();
     private readonly SettingsService _service;
     private readonly IThemeService _theme = Substitute.For<IThemeService>();
     private readonly IClipRepository _repository = Substitute.For<IClipRepository>();
@@ -28,8 +29,8 @@ public sealed class SettingsViewModelTests
     public SettingsViewModelTests()
     {
         _service = new SettingsService(_store, new AppSettings());
-        _passwords = new LockPasswordService(_service);
-        _locks = new CategoryLockService(_service, Substitute.For<IDataChangeNotifier>());
+        _passwords = new LockPasswordService(_service, _secure, TimeProvider.System);
+        _locks = new CategoryLockService(_service, Substitute.For<IDataChangeNotifier>(), _secure, TimeProvider.System);
         _hotkeyRegistration.IsCurrentHotkeyRegistered.Returns(true);
     }
 
@@ -552,7 +553,8 @@ public sealed class SettingsViewModelTests
         await viewModel.SetLockPasswordAsync("hunter2");
 
         Assert.True(viewModel.HasLockPassword);
-        Assert.True(_store.Saved is { LockPasswordHash: not null });
+        Assert.True(_secure.Values.ContainsKey("LockPasswordHash"));
+        Assert.Null(_service.Current.LockPasswordHash);
         Assert.True(viewModel.VerifyLockPassword("hunter2"));
         Assert.False(viewModel.VerifyLockPassword("wrong"));
     }
@@ -567,7 +569,7 @@ public sealed class SettingsViewModelTests
         await viewModel.RemoveLockPasswordAsync();
 
         Assert.False(viewModel.HasLockPassword);
-        Assert.True(_store.Saved is { LockPasswordHash: null });
+        Assert.False(_secure.Values.ContainsKey("LockPasswordHash"));
         await _categories.Received(1).ClearLocksAsync(Arg.Any<CancellationToken>());
     }
 

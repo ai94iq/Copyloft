@@ -7,6 +7,8 @@ public sealed class CategoryRow(long id, string name, bool isLocked, bool isUnlo
 
     public string Name { get; } = name;
 
+    public bool IsLocked { get; } = isLocked;
+
     // Not locked yet: offer the lock.
     public bool ShowLock { get; } = !isLocked;
 

@@ -103,6 +103,7 @@
   <data name="Password_TooShort" xml:space="preserve"><value>Use at least 4 characters.</value></data>
   <data name="Password_VerifyTitle" xml:space="preserve"><value>Password</value></data>
   <data name="Password_Wrong" xml:space="preserve"><value>That password is not right.</value></data>
+  <data name="Password_Wait" xml:space="preserve"><value>Too many wrong tries. Try again in {0} seconds.</value></data>
   <data name="Retention_Day" xml:space="preserve"><value>1 day</value></data>
   <data name="Retention_Forever" xml:space="preserve"><value>Forever</value></data>
   <data name="Retention_Month" xml:space="preserve"><value>30 days</value></data>

@@ -231,6 +231,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool VerifyLockPassword(string password) => _passwords.Verify(password);
 
+    public TimeSpan LockPasswordRetryAfter => _passwords.RetryAfter;
+
     public async Task SetLockPasswordAsync(string password)
     {
         _passwords.Set(password);

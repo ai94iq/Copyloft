@@ -99,7 +99,7 @@ public sealed partial class SettingsPage : UserControl
     private async Task OnPasswordClickAsync(object? sender)
     {
         var password = ViewModel.HasLockPassword
-            ? await PasswordPrompt.ChangeAsync(this, ViewModel.VerifyLockPassword)
+            ? await PasswordPrompt.ChangeAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter)
             : await PasswordPrompt.SetAsync(this);
         if (password is not null) await ViewModel.SetLockPasswordAsync(password);
     }
@@ -108,7 +108,7 @@ public sealed partial class SettingsPage : UserControl
 
     private async Task OnRemovePasswordClickAsync(object? sender)
     {
-        if (await PasswordPrompt.ConfirmRemoveAsync(this, ViewModel.VerifyLockPassword))
+        if (await PasswordPrompt.ConfirmRemoveAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter))
             await ViewModel.RemoveLockPasswordAsync();
     }
 
@@ -135,7 +135,7 @@ public sealed partial class SettingsPage : UserControl
         }
         else if (button.Classes.Contains("unlock"))
         {
-            if (await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword))
+            if (await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter))
                 await ViewModel.UnlockCategoryAsync(row.Id);
         }
         else if (button.Classes.Contains("rename"))
@@ -166,8 +166,14 @@ public sealed partial class SettingsPage : UserControl
         return dialog.ShowAsync(this);
     }
 
+    // Deleting a locked category leaves its clips in the open history, so it needs the password,
+    // even while the category is unlocked.
     private async Task DeleteCategoryAsync(CategoryRow row)
     {
+        if (row.IsLocked && ViewModel.HasLockPassword &&
+            !await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter))
+            return;
+
         var message = new TextBlock { Text = Tr.Format("Category_DeleteConfirm", row.Name), TextWrapping = Avalonia.Media.TextWrapping.Wrap };
         if (await new InlineDialog(Tr.Get("Category_DeleteTitle"), Tr.Get("Common_Delete"), message).ShowAsync(this))
             await ViewModel.DeleteCategoryAsync(row.Id);
@@ -177,7 +183,7 @@ public sealed partial class SettingsPage : UserControl
 
     private async Task OnExportClickAsync(object? sender)
     {
-        if (ViewModel.HasLockPassword && !await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword)) return;
+        if (ViewModel.HasLockPassword && !await PasswordPrompt.VerifyAsync(this, ViewModel.VerifyLockPassword, () => ViewModel.LockPasswordRetryAfter)) return;
         if (TopLevel.GetTopLevel(this)?.StorageProvider is not { CanSave: true } storage) return;
 
         var csv = ViewModel.SelectedExportFormat.Value == ClipExportFormat.Csv;
