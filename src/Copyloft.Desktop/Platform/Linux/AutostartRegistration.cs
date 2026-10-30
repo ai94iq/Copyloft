@@ -34,6 +34,13 @@ public sealed class AutostartRegistration(
                 return;
             }
 
+            // A line break in the path would start a new key in the entry.
+            if (exe.Any(char.IsControl))
+            {
+                log.LogWarning("The executable path has control characters; the startup setting was not applied");
+                return;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             File.WriteAllText(path, $"""
                 [Desktop Entry]

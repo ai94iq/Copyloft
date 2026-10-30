@@ -11,8 +11,10 @@ public sealed class DatabaseInitializer(
     public void BackupAndMigrate()
     {
         Directory.CreateDirectory(options.BackupDirectory);
+        if (options.EncryptionKey is not null) FinishInterruptedEncryption();
         if (options.EncryptionKey is not null && IsPlaintext(options.DatabasePath))
             EncryptExistingDatabase();
+        if (options.EncryptionKey is not null) RemovePlaintextBackups();
 
         var migrations = LoadMigrations();
         using var connection = factory.Open();
@@ -61,9 +63,9 @@ public sealed class DatabaseInitializer(
         {
             connection.Open();
             var version = connection.ExecuteScalar<long>("PRAGMA user_version;");
-            var attach = string.Create(CultureInfo.InvariantCulture,
-                $"ATTACH DATABASE '{target.Replace("'", "''")}' AS encrypted KEY '{options.EncryptionKey!.Replace("'", "''")}';");
-            connection.Execute(attach);
+            // Parameters, so the key never sits in SQL text that an error message could log.
+            connection.Execute(
+                "ATTACH DATABASE @target AS encrypted KEY @key;", new { target, key = options.EncryptionKey });
             connection.Execute("SELECT sqlcipher_export('encrypted');");
             // sqlcipher_export copies schema and data but not user_version.
             connection.Execute(string.Create(CultureInfo.InvariantCulture,
@@ -71,15 +73,67 @@ public sealed class DatabaseInitializer(
             connection.Execute("DETACH DATABASE encrypted;");
         }
 
+        // The plaintext file steps aside before the encrypted one takes its place, so it can be
+        // zeroed instead of left in freed blocks; FinishInterruptedEncryption covers a crash
+        // between the two moves.
         SqliteConnection.ClearAllPools();
-        File.Move(target, database, overwrite: true);
-        File.Delete(database + "-wal");   // plaintext sidecars must not survive
-        File.Delete(database + "-shm");
+        File.Move(database, PlaintextLeftover, overwrite: true);
+        File.Move(target, database);
+        Shred(PlaintextLeftover);
+        Shred(database + "-wal");   // plaintext sidecars must not survive
+        Shred(database + "-shm");
 
-        // Plaintext backups would keep readable copies of the history around.
-        foreach (var backup in BackupFiles().ToList()) backup.Delete();
+        // Backups from before encryption would keep readable copies of the history around.
+        foreach (var backup in BackupFiles().ToList()) Shred(backup.FullName);
 
         log.LogInformation("Encrypted the existing database");
+    }
+
+    private string PlaintextLeftover => options.DatabasePath + ".plaintext";
+
+    // A crash between the two moves leaves no database but the plaintext one aside: put it back
+    // so encryption runs again. With the encrypted database in place, the leftover only needs zeroing.
+    private void FinishInterruptedEncryption()
+    {
+        if (!File.Exists(PlaintextLeftover)) return;
+
+        if (File.Exists(options.DatabasePath)) Shred(PlaintextLeftover);
+        else File.Move(PlaintextLeftover, options.DatabasePath);
+    }
+
+    // Every start, not only right after encrypting: an interrupted run, or a backup copied back
+    // by hand, must not keep plaintext history in the backups folder.
+    private void RemovePlaintextBackups()
+    {
+        foreach (var backup in BackupFiles().Where(file => IsPlaintext(file.FullName)).ToList())
+        {
+            Shred(backup.FullName);
+            log.LogInformation("Removed a plaintext backup ({Name})", backup.Name);
+        }
+    }
+
+    // Best effort: zeroes a file before deleting it, so the plaintext is not simply left in the
+    // freed blocks. SSD wear levelling and copy-on-write file systems can still keep old copies.
+    // A file that cannot be removed is logged and left, never a failed start.
+    private void Shred(string path)
+    {
+        try
+        {
+            if (!File.Exists(path)) return;
+
+            using (var stream = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.None))
+            {
+                var zeros = new byte[81920];
+                for (var left = stream.Length; left > 0; left -= zeros.Length)
+                    stream.Write(zeros, 0, (int)Math.Min(zeros.Length, left));
+                stream.Flush(flushToDisk: true);
+            }
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remove {Name}; it may still hold plaintext history", Path.GetFileName(path));
+        }
     }
 
     private void Backup(SqliteConnection connection, string reason)
@@ -105,7 +159,7 @@ public sealed class DatabaseInitializer(
     private static List<Migration> LoadMigrations()
     {
         var assembly = typeof(DatabaseInitializer).Assembly;
-        return assembly.GetManifestResourceNames()
+        var migrations = assembly.GetManifestResourceNames()
             .Where(n => n.StartsWith(Prefix, StringComparison.Ordinal) && n.EndsWith(".sql", StringComparison.Ordinal))
             .Select(n =>
             {
@@ -115,6 +169,20 @@ public sealed class DatabaseInitializer(
             })
             .OrderBy(m => m.Version)
             .ToList();
+        CheckVersions([.. migrations.Select(m => (m.Version, m.Name))]);
+        return migrations;
+    }
+
+    // Two files with one version would apply in name order and only one would be recorded; a
+    // gap would hide a missing file. Either is a packaging mistake, so startup stops on it.
+    internal static void CheckVersions(IReadOnlyList<(int Version, string Name)> migrations)
+    {
+        for (var i = 0; i < migrations.Count; i++)
+        {
+            if (migrations[i].Version != i + 1)
+                throw new InvalidOperationException(
+                    $"Migration {migrations[i].Name} has version {migrations[i].Version}; expected {i + 1}");
+        }
     }
 
     private sealed record Migration(int Version, string Name, string Sql);

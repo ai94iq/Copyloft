@@ -14,6 +14,8 @@ public sealed class Win32ClipboardBackend(ILogger<Win32ClipboardBackend> log) : 
         remove => _watcher.Changed -= value;
     }
 
+    public Task<bool> IsExcludedAsync() => Task.Run(Win32Clipboard.IsExcluded);
+
     // The text read can sleep on retries, so it runs off the UI thread.
     public Task<string?> ReadTextAsync() => Task.Run(Win32Clipboard.TryReadText);
 

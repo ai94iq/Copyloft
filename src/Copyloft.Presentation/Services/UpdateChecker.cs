@@ -8,8 +8,16 @@ public sealed class UpdateChecker : IUpdateChecker
 {
     private const string LatestReleaseApi = "https://api.github.com/repos/ai94iq/Copyloft/releases/latest";
 
-    // 15 seconds: the first request pays for DNS and TLS on a cold start.
-    private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
+    // Only a tag name is read; a release answer is a few kilobytes.
+    internal const int MaxResponseBytes = 1024 * 1024;
+
+    // 15 seconds: the first request pays for DNS and TLS on a cold start. No redirects, so the
+    // answer comes from api.github.com itself; the body is buffered up to MaxResponseBytes.
+    private static readonly HttpClient Http = new(new SocketsHttpHandler { AllowAutoRedirect = false })
+    {
+        Timeout = TimeSpan.FromSeconds(15),
+        MaxResponseContentBufferSize = MaxResponseBytes,
+    };
 
     // The running build's version, e.g. "0.2.0".
     public static string CurrentVersion { get; } =

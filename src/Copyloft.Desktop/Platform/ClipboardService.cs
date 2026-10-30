@@ -34,9 +34,9 @@ public sealed class ClipboardService : IClipboardMonitor, IDisposable
     // The capture started by the latest change, for tests.
     internal Task Pending { get; private set; } = Task.CompletedTask;
 
-    public void WriteText(string text) => _ = WriteAsync(() => _backend.WriteTextAsync(text), "text");
+    public Task<bool> WriteText(string text) => WriteAsync(() => _backend.WriteTextAsync(text), "text");
 
-    public Task WriteImageAsync(byte[] png) => WriteAsync(() => _backend.WriteImageAsync(png), "an image");
+    public Task<bool> WriteImageAsync(byte[] png) => WriteAsync(() => _backend.WriteImageAsync(png), "an image");
 
     public void Dispose()
     {
@@ -44,12 +44,13 @@ public sealed class ClipboardService : IClipboardMonitor, IDisposable
         _backend.Dispose();
     }
 
-    private async Task WriteAsync(Func<Task<bool>> write, string what)
+    private async Task<bool> WriteAsync(Func<Task<bool>> write, string what)
     {
         _selfWrites++;
-        if (await write()) return;
+        if (await write()) return true;
         _selfWrites--;
         _log.LogWarning("Writing {What} to the clipboard failed", what);
+        return false;
     }
 
     private void OnClipboardChanged(object? sender, EventArgs e)
@@ -68,6 +69,9 @@ public sealed class ClipboardService : IClipboardMonitor, IDisposable
     {
         try
         {
+            // A password manager marked this copy as not to be recorded.
+            if (await _backend.IsExcludedAsync()) return;
+
             // An image copy wins over any text formats the same copy may carry.
             if (await _backend.ReadImagePngAsync() is { } png)
             {

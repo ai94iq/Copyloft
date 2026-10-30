@@ -13,4 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\Copyloft.Core\Copyloft.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Copyloft.Data.Tests" />
+  </ItemGroup>
 </Project>

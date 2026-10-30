@@ -27,6 +27,7 @@
   <data name="Category_NewTitle" xml:space="preserve"><value>تصنيف جديد</value></data>
   <data name="Category_None" xml:space="preserve"><value>بلا تصنيف</value></data>
   <data name="Category_RenameTitle" xml:space="preserve"><value>إعادة تسمية التصنيف</value></data>
+  <data name="Clip_CopyFailed" xml:space="preserve"><value>تعذر النسخ، حاول مرة أخرى</value></data>
   <data name="Clip_Deleted" xml:space="preserve"><value>تم حذف العنصر</value></data>
   <data name="Clip_Time_Days" xml:space="preserve"><value>{0} ي</value></data>
   <data name="Clip_Time_Hours" xml:space="preserve"><value>{0} س</value></data>
@@ -102,6 +103,7 @@
   <data name="Password_TooShort" xml:space="preserve"><value>استخدم 4 أحرف على الأقل.</value></data>
   <data name="Password_VerifyTitle" xml:space="preserve"><value>كلمة المرور</value></data>
   <data name="Password_Wrong" xml:space="preserve"><value>كلمة المرور غير صحيحة.</value></data>
+  <data name="Password_Wait" xml:space="preserve"><value>محاولات خاطئة كثيرة. حاول مرة أخرى بعد {0} ثانية.</value></data>
   <data name="Retention_Day" xml:space="preserve"><value>يوم واحد</value></data>
   <data name="Retention_Forever" xml:space="preserve"><value>إلى الأبد</value></data>
   <data name="Retention_Month" xml:space="preserve"><value>30 يومًا</value></data>

@@ -35,4 +35,16 @@ public sealed class StartupRegistrationTests
 
         Assert.Empty(values);
     }
+
+    [Fact]
+    public void No_path_keeps_value()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows");
+        var values = new Dictionary<string, string> { ["Copyloft"] = @"""C:\old\Copyloft.exe""" };
+
+        if (OperatingSystem.IsWindows())
+            StartupRegistration.Apply(true, null, (name, value) => values[name] = value, name => values.Remove(name));
+
+        Assert.Equal(@"""C:\old\Copyloft.exe""", values["Copyloft"]);
+    }
 }

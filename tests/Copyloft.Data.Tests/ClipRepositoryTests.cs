@@ -437,6 +437,39 @@ public sealed class ClipRepositoryTests
     }
 
     [Fact]
+    public async Task Row_actions_skip_locked_clips()
+    {
+        using var db = new TempDatabase();
+        var repo = New(db);
+        var categories = new CategoryRepository(db.Factory, Substitute.For<IDataChangeNotifier>());
+        var ct = TestContext.Current.CancellationToken;
+
+        await repo.AddImageAsync([1, 2, 3], [9], null, T0, ct);
+        var id = Assert.Single(await repo.GetRecentAsync(null, 50, ct)).Id;
+        var secret = await categories.GetOrAddAsync("Secret", ct);
+        await repo.AssignCategoryAsync(id, secret.Id, ct);
+        await categories.SetLockedAsync(secret.Id, true, ct);
+
+        // A row loaded before the relock still carries this id; nothing may reach the clip.
+        Assert.Null(await repo.GetImageAsync(id, ct));
+        await repo.AssignCategoryAsync(id, null, ct);
+        await repo.SetPinnedAsync(id, true, ct);
+        await repo.DeleteAsync(id, ct);
+
+        var unlocked = new long[] { secret.Id };
+        var item = Assert.Single(await repo.GetRecentAsync(null, 50, ct, unlockedCategories: unlocked));
+        Assert.Equal(secret.Id, item.CategoryId);
+        Assert.False(item.IsPinned);
+        Assert.NotNull(await repo.GetImageAsync(id, ct, unlocked));
+
+        // Once unlocked, the same actions apply.
+        await repo.SetPinnedAsync(id, true, ct, unlocked);
+        Assert.True(Assert.Single(await repo.GetRecentAsync(null, 50, ct, unlockedCategories: unlocked)).IsPinned);
+        await repo.DeleteAsync(id, ct, unlocked);
+        Assert.Empty(await repo.GetRecentAsync(null, 50, ct, unlockedCategories: unlocked));
+    }
+
+    [Fact]
     public async Task Count_matches_search_results()
     {
         using var db = new TempDatabase();

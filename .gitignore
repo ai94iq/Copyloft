@@ -19,3 +19,8 @@ logs/
 # Secrets
 *.pfx
 *.p12
+*.pem
+*.key
+*.snk
+.env
+credentials*.json

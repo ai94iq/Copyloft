@@ -20,7 +20,7 @@ public static class LegacyInstance
     public static bool IsRunning(string? name = null)
     {
         using var probe = new SingleInstanceService(name ?? Name, "clipshelf-");
-        return !probe.TryClaim();
+        return !probe.TryClaim() && !probe.ClaimDenied;
     }
 }
 

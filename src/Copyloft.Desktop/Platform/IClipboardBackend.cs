@@ -5,6 +5,8 @@ namespace Copyloft.Desktop.Platform;
 public interface IClipboardBackend : IDisposable
 {
     event EventHandler? Changed;
+    // True when the copying app marked this copy as not to be recorded (password managers).
+    Task<bool> IsExcludedAsync();
     Task<string?> ReadTextAsync();
     Task<byte[]?> ReadImagePngAsync();
     Task<bool> WriteTextAsync(string text);

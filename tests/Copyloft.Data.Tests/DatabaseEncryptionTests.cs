@@ -107,6 +107,54 @@ public sealed class DatabaseEncryptionTests
             Assert.False(ContainsText(file, sentinel), file);
     }
 
+    // A run that died before the sweep, or a backup copied back by hand.
+    [Fact]
+    public void Plaintext_backup_swept()
+    {
+        using var plain = new TempDatabase();
+        using var db = new TempDatabase(TempDatabase.Key);
+        SqliteConnection.ClearAllPools();
+        var stray = Path.Combine(db.Options.BackupDirectory, "data-20260101-000000-daily.db");
+        File.Copy(plain.Options.DatabasePath, stray);
+
+        db.Initializer().BackupAndMigrate();
+
+        Assert.False(File.Exists(stray));
+    }
+
+    // A crash after the plaintext file stepped aside, before the encrypted one moved in.
+    [Fact]
+    public void Interrupted_encrypt_recovers()
+    {
+        using var plain = new TempDatabase();
+        using (var connection = plain.Factory.Open())
+            connection.Execute("INSERT INTO Clip (Text, TextHash, CreatedAtUtc) VALUES ('kept', 'h1', '2026-01-01T00:00:00.0000000+00:00');");
+        SqliteConnection.ClearAllPools();
+        File.Move(plain.Options.DatabasePath, plain.Options.DatabasePath + ".plaintext");
+
+        var options = plain.Options with { EncryptionKey = TempDatabase.Key };
+        var factory = new SqliteConnectionFactory(options);
+        new DatabaseInitializer(factory, options, NullLogger<DatabaseInitializer>.Instance).BackupAndMigrate();
+
+        using (var connection = factory.Open())
+            Assert.Equal("kept", connection.ExecuteScalar<string>("SELECT Text FROM Clip;"));
+        SqliteConnection.ClearAllPools();
+        Assert.False(IsPlaintext(options.DatabasePath));
+        Assert.False(File.Exists(options.DatabasePath + ".plaintext"));
+    }
+
+    [Fact]
+    public void Leftover_plaintext_removed()
+    {
+        using var db = new TempDatabase(TempDatabase.Key);
+        var leftover = db.Options.DatabasePath + ".plaintext";
+        File.WriteAllText(leftover, "old history");
+
+        db.Initializer().BackupAndMigrate();
+
+        Assert.False(File.Exists(leftover));
+    }
+
     private static bool ContainsText(string path, string text) =>
         File.ReadAllBytes(path).AsSpan().IndexOf(Encoding.UTF8.GetBytes(text)) >= 0;
 

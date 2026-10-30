@@ -119,6 +119,10 @@ public sealed partial class FlyoutWindow : Window
     // where no keystroke can reach it, say how to paste.
     private void PasteBack()
     {
+        // An image pick finishes after its load and write; if the user dismissed the flyout in
+        // the meantime, they have moved on and no keystroke may follow them.
+        if (!IsOpen) return;
+
         var target = _previousWindow;
         var position = Position;
         HideFlyout();

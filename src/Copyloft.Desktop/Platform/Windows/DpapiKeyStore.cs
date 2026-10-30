@@ -19,7 +19,10 @@ public sealed class DpapiKeyStore : IKeyStore
 
         var key = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
         var protectedBlob = ProtectedData.Protect(Encoding.UTF8.GetBytes(key), null, DataProtectionScope.CurrentUser);
-        File.WriteAllBytes(path, protectedBlob);
+        // Written aside and moved into place, so a crash mid-write cannot leave a half blob.
+        var temporary = path + ".tmp";
+        File.WriteAllBytes(temporary, protectedBlob);
+        File.Move(temporary, path);
         return key;
     }
 }

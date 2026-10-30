@@ -30,6 +30,8 @@ public sealed class PasswordHashTests
     [InlineData("not-a-hash")]
     [InlineData("1.2.3")]
     [InlineData("0.AAAA.BBBB")]
+    [InlineData("600000.AAAA.")]          // no hash bytes: the derivation would throw
+    [InlineData("2147483647.AAAA.BBBB")]  // an iteration count that would take hours
     public void A_damaged_hash_never_verifies(string stored)
     {
         Assert.False(PasswordHash.Verify("hunter2", stored));

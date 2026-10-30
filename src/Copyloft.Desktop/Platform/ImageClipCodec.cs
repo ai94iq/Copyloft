@@ -20,7 +20,7 @@ public static class ImageClipCodec
 
         try
         {
-            using var bitmap = SKBitmap.Decode(WrapDibAsBmp(dib, headerSize));
+            using var bitmap = Decode(WrapDibAsBmp(dib, headerSize));
             return bitmap is null ? null : EncodePng(bitmap);
         }
         catch (Exception)
@@ -33,7 +33,7 @@ public static class ImageClipCodec
     {
         try
         {
-            using var source = SKBitmap.Decode(png);
+            using var source = Decode(png);
             if (source is null) return null;
 
             var scale = Math.Min(1.0, Math.Min(
@@ -55,7 +55,7 @@ public static class ImageClipCodec
     {
         try
         {
-            using var decoded = SKBitmap.Decode(png);
+            using var decoded = Decode(png);
             if (decoded is null) return null;
 
             using var bgra = new SKBitmap(new SKImageInfo(
@@ -83,6 +83,19 @@ public static class ImageClipCodec
         }
     }
 
+    // 64 megapixels, about 256 MiB decoded: room for a screenshot across three 4K screens. A
+    // small file can claim far more (a PNG bomb), so the size is read from the header first.
+    internal const long MaxPixels = 64L * 1024 * 1024;
+
+    private static SKBitmap? Decode(byte[] encoded)
+    {
+        using var stream = new SKMemoryStream(encoded);
+        using var codec = SKCodec.Create(stream);
+        if (codec is null || (long)codec.Info.Width * codec.Info.Height > MaxPixels) return null;
+
+        return SKBitmap.Decode(codec);
+    }
+
     private static byte[] EncodePng(SKBitmap bitmap)
     {
         using var image = SKImage.FromBitmap(bitmap);
@@ -95,7 +108,9 @@ public static class ImageClipCodec
     internal static int PixelOffset(byte[] dib, int headerSize)
     {
         const int BiBitfields = 3, BiAlphaBitfields = 6;
-        if (headerSize < 40) return headerSize + (BitConverter.ToInt16(dib, 10) <= 8 ? (1 << BitConverter.ToInt16(dib, 10)) * 3 : 0);
+        // Palette sizes are bounded (at most 256 entries), so a hostile header cannot push the
+        // offset anywhere it likes.
+        if (headerSize < 40) return headerSize + (BitConverter.ToInt16(dib, 10) is >= 1 and <= 8 and var coreBits ? (1 << coreBits) * 3 : 0);
 
         var bitCount = BitConverter.ToInt16(dib, 14);
         var compression = BitConverter.ToInt32(dib, 16);
@@ -106,7 +121,7 @@ public static class ImageClipCodec
             BiAlphaBitfields => 16,
             _ => 0,
         };
-        var paletteEntries = colorsUsed > 0 ? colorsUsed : bitCount <= 8 ? 1 << bitCount : 0;
+        var paletteEntries = colorsUsed is > 0 and <= 256 ? colorsUsed : bitCount is >= 1 and <= 8 ? 1 << bitCount : 0;
         return headerSize + masks + paletteEntries * 4;
     }
 

@@ -64,7 +64,7 @@ public sealed class HistoryPageTests
 
         hosted.Press(Key.Enter);
 
-        hosted.Kit.Clipboard.Received().WriteText("two");
+        _ = hosted.Kit.Clipboard.Received().WriteText("two");
         var notice = hosted.Page.FindControl<TextBlock>("CopyNotice")!;
         Assert.True(notice.IsVisible);
         Assert.Equal("Copied", notice.Text);

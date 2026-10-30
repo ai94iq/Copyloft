@@ -34,6 +34,8 @@ internal class ViewModelKit
         Repository.CountAsync(default, default, default, default).ReturnsForAnyArgs(_ => StoredTotal ?? _stored.Count);
         Categories.GetCategoriesAsync(default).ReturnsForAnyArgs(_ => Task.FromResult<IReadOnlyList<Category>>(StoredCategories.ToList()));
         Locks.UnlockedCategoryIds.Returns([]);
+        Clipboard.WriteText(default!).ReturnsForAnyArgs(true);
+        Clipboard.WriteImageAsync(default!).ReturnsForAnyArgs(true);
         ViewModel = new ClipboardPanelViewModel(
             Repository, Categories, Locks, Passwords, Clipboard, Substitute.For<IDateFormatter>(),
             NullLogger<ClipboardPanelViewModel>.Instance);

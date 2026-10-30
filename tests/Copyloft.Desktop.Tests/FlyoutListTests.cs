@@ -63,7 +63,7 @@ public sealed class FlyoutListTests
 
         Press(kit, Key.Enter);
 
-        kit.Clipboard.Received().WriteText("first");
+        _ = kit.Clipboard.Received().WriteText("first");
         _ = kit.PasteBack.DidNotReceiveWithAnyArgs().IntoAsync(default);
         Assert.False(kit.Window.IsOpen);
         Assert.True(kit.Window.Hint?.IsVisible);
@@ -81,9 +81,25 @@ public sealed class FlyoutListTests
         Press(kit, Key.Down);
         Press(kit, Key.Enter);
 
-        kit.Clipboard.Received().WriteText("second");
+        _ = kit.Clipboard.Received().WriteText("second");
         kit.PasteBack.Received().IntoAsync(new IntPtr(42));
         Assert.False(kit.Window.IsOpen);
+    });
+
+    // A slow write (an image load) that ends after the user closed the flyout sends no keystroke.
+    [Fact]
+    public Task Late_pick_does_not_paste() => Ui.Run(() =>
+    {
+        var kit = OpenWith("first");
+        var write = new TaskCompletionSource<bool>();
+        kit.Clipboard.WriteText("first").Returns(write.Task);
+
+        Press(kit, Key.Enter);
+        kit.Window.HideFlyout();
+        write.SetResult(true);
+        Dispatcher.UIThread.RunJobs();
+
+        _ = kit.PasteBack.DidNotReceiveWithAnyArgs().IntoAsync(default);
     });
 
     [Fact]
@@ -93,7 +109,7 @@ public sealed class FlyoutListTests
 
         Press(kit, Key.D2, RawInputModifiers.Control);
 
-        kit.Clipboard.Received().WriteText("second");
+        _ = kit.Clipboard.Received().WriteText("second");
     });
 
     [Fact]

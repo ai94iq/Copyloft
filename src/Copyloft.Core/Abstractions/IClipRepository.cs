@@ -11,8 +11,9 @@ public interface IClipRepository
     Task AddImageAsync(
         byte[] image, byte[] thumbnail, string? appName, DateTimeOffset copiedAtUtc, CancellationToken ct);
 
-    // The full image for pasting back; null for text clips or missing rows.
-    Task<byte[]?> GetImageAsync(long id, CancellationToken ct);
+    // The full image for pasting back; null for text clips, missing rows, or a clip in a locked
+    // category that is not in unlockedCategories.
+    Task<byte[]?> GetImageAsync(long id, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null);
 
     Task<IReadOnlyList<ClipListItem>> GetRecentAsync(
         PageCursor? after, int pageSize, CancellationToken ct, long? categoryId = null,
@@ -26,12 +27,14 @@ public interface IClipRepository
     Task<int> CountAsync(
         string? query, long? categoryId, IReadOnlyCollection<long>? unlockedCategories, CancellationToken ct);
 
-    Task SetPinnedAsync(long id, bool pinned, CancellationToken ct);
+    // Row actions change nothing for a clip in a locked category that is not in unlockedCategories.
+    Task SetPinnedAsync(long id, bool pinned, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null);
 
     // Moves a clip into a category, or out of every category when categoryId is null.
-    Task AssignCategoryAsync(long clipId, long? categoryId, CancellationToken ct);
+    Task AssignCategoryAsync(
+        long clipId, long? categoryId, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null);
 
-    Task DeleteAsync(long id, CancellationToken ct);
+    Task DeleteAsync(long id, CancellationToken ct, IReadOnlyCollection<long>? unlockedCategories = null);
 
     Task ClearUnpinnedAsync(CancellationToken ct);
 

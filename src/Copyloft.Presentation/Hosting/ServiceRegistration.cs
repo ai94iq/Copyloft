@@ -24,6 +24,7 @@ public static class ServiceRegistration
         services.AddSingleton<DatabaseInitializer>();
         services.AddSingleton<IClipRepository, ClipRepository>();
         services.AddSingleton<ICategoryRepository, CategoryRepository>();
+        services.AddSingleton<ISecureSettings, SecureSettingsRepository>();
 
         services.AddSingleton<ClipCaptureService>();
         services.AddSingleton<SessionCleanup>();

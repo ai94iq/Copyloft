@@ -231,6 +231,8 @@ public sealed partial class SettingsViewModel : ObservableObject
 
     public bool VerifyLockPassword(string password) => _passwords.Verify(password);
 
+    public TimeSpan LockPasswordRetryAfter => _passwords.RetryAfter;
+
     public async Task SetLockPasswordAsync(string password)
     {
         _passwords.Set(password);
@@ -238,11 +240,13 @@ public sealed partial class SettingsViewModel : ObservableObject
         await RefreshCategoriesAsync();
     }
 
+    // Locks go first: a crash in between must leave a password with no locks, never locked
+    // categories with no password to open them.
     public async Task RemoveLockPasswordAsync()
     {
-        _passwords.Remove();
-        _locks.Reset();
         await _categories.ClearLocksAsync(CancellationToken.None);
+        _locks.Reset();
+        _passwords.Remove();
         NotifyLockPasswordChanged();
         await RefreshCategoriesAsync();
     }

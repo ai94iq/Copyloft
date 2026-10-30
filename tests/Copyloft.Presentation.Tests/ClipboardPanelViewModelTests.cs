@@ -17,7 +17,12 @@ public sealed class ClipboardPanelViewModelTests
     private readonly IClipboardWriter _clipboard = Substitute.For<IClipboardWriter>();
     private readonly IDateFormatter _dates = Substitute.For<IDateFormatter>();
 
-    public ClipboardPanelViewModelTests() => _dates.FormatSince(Arg.Any<DateTimeOffset>()).Returns("now");
+    public ClipboardPanelViewModelTests()
+    {
+        _dates.FormatSince(Arg.Any<DateTimeOffset>()).Returns("now");
+        _clipboard.WriteText(default!).ReturnsForAnyArgs(true);
+        _clipboard.WriteImageAsync(default!).ReturnsForAnyArgs(true);
+    }
 
     [Fact]
     public async Task Loads_recent_clips()
@@ -126,7 +131,7 @@ public sealed class ClipboardPanelViewModelTests
 
         vm.Activate(vm.Items[0]);
 
-        _clipboard.Received(1).WriteText("hello");
+        _ = _clipboard.Received(1).WriteText("hello");
         Assert.True(signalled);
     }
 
@@ -506,7 +511,7 @@ public sealed class ClipboardPanelViewModelTests
 
         vm.CopySelectedCommand.Execute(null);
 
-        _clipboard.Received(1).WriteText("one\r\nthree");
+        _ = _clipboard.Received(1).WriteText("one\r\nthree");
         Assert.False(vm.IsSelecting);
         Assert.All(vm.Items, item => Assert.False(item.IsSelected));
     }
@@ -523,7 +528,7 @@ public sealed class ClipboardPanelViewModelTests
         vm.Activate(vm.Items[0]);
 
         Assert.True(vm.Items[0].IsSelected);
-        _clipboard.DidNotReceive().WriteText(Arg.Any<string>());
+        _ = _clipboard.DidNotReceive().WriteText(Arg.Any<string>());
     }
 
     [Fact]
@@ -824,7 +829,7 @@ public sealed class ClipboardPanelViewModelTests
 
         vm.ActivateSelected();
 
-        _clipboard.Received(1).WriteText("two");
+        _ = _clipboard.Received(1).WriteText("two");
         Assert.True(signalled);
     }
 
@@ -838,7 +843,7 @@ public sealed class ClipboardPanelViewModelTests
 
         vm.ActivateSelected();
 
-        _clipboard.Received(1).WriteText("one");
+        _ = _clipboard.Received(1).WriteText("one");
     }
 
     [Fact]
@@ -959,7 +964,7 @@ public sealed class ClipboardPanelViewModelTests
         vm.Activate(vm.Items[0]);
 
         await _clipboard.Received(1).WriteImageAsync(Arg.Is<byte[]>(bytes => bytes.Length == 3));
-        _clipboard.DidNotReceive().WriteText(Arg.Any<string>());
+        _ = _clipboard.DidNotReceive().WriteText(Arg.Any<string>());
         Assert.True(signalled);
     }
 
@@ -981,7 +986,7 @@ public sealed class ClipboardPanelViewModelTests
 
         vm.CopySelectedCommand.Execute(null);
 
-        _clipboard.Received(1).WriteText("one");
+        _ = _clipboard.Received(1).WriteText("one");
     }
 
     [Fact]
@@ -1078,6 +1083,71 @@ public sealed class ClipboardPanelViewModelTests
             () => _repository.ReceivedCalls().Any(), TestContext.Current.CancellationToken);
 
         await _repository.Received().GetRecentAsync(null, 50, Arg.Any<CancellationToken>());
+    }
+
+    [Fact]
+    public async Task Relock_drops_hidden_rows()
+    {
+        var vm = await LoadWithUnlockedSecretAsync();
+        vm.SelectedItem = vm.Items.Single(item => item.CategoryId == 5);
+        vm.IsViewVisible = false;     // a hidden flyout skips reloads; its rows must still go
+        _repository.ClearReceivedCalls();
+
+        _locks.Lock(5);
+        WeakReferenceMessenger.Default.Send(new DataChanged("lock"));
+
+        await _repository.DidNotReceiveWithAnyArgs().GetRecentAsync(default, default, TestContext.Current.CancellationToken);
+        Assert.Equal(["open"], vm.Items.Select(item => item.Text));
+        Assert.Null(vm.SelectedItem);
+    }
+
+    [Fact]
+    public async Task Hidden_row_not_picked()
+    {
+        var vm = await LoadWithUnlockedSecretAsync();
+        var secret = vm.Items.Single(item => item.CategoryId == 5);
+        var signalled = false;
+        vm.ItemActivated += (_, _) => signalled = true;
+
+        _locks.Lock(5);
+        vm.Activate(secret);
+
+        _ = _clipboard.DidNotReceive().WriteText(Arg.Any<string>());
+        Assert.False(signalled);
+    }
+
+    [Fact]
+    public async Task Failed_copy_does_not_paste()
+    {
+        _repository.GetRecentAsync(null, 50, Arg.Any<CancellationToken>())
+            .Returns(new List<ClipListItem> { Item(1, "one") });
+        _clipboard.WriteText("one").Returns(false);
+        var vm = Create();
+        await vm.RefreshAsync();
+        var signalled = false;
+        vm.ItemActivated += (_, _) => signalled = true;
+
+        vm.Activate(vm.Items[0]);
+
+        Assert.False(signalled);
+        Assert.Equal(Tr.Get("Clip_CopyFailed"), vm.CopyNotice);
+    }
+
+    // Category 5 is locked but unlocked for now; the list shows one clip in it and one outside.
+    // The store hides the locked clip unless the query passes 5 as unlocked, like the real one.
+    private async Task<ClipboardPanelViewModel> LoadWithUnlockedSecretAsync()
+    {
+        _categories.GetCategoriesAsync(default).ReturnsForAnyArgs(new List<Category> { new(5, "Secret", IsLocked: true) });
+        _repository.GetRecentAsync(default, default, default).ReturnsForAnyArgs(call =>
+            call.ArgAt<IReadOnlyCollection<long>?>(4)?.Contains(5) == true
+                ? [Item(1, "open"), Item(2, "secret") with { CategoryId = 5 }]
+                : new List<ClipListItem> { Item(1, "open") });
+        _locks.Unlock(5);
+        var vm = Create();
+        await vm.RefreshCategoryFilterAsync();
+        await vm.RefreshAsync();
+        Assert.Equal(2, vm.Items.Count);
+        return vm;
     }
 
     private ClipboardPanelViewModel Create() =>

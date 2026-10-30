@@ -48,6 +48,15 @@ public sealed class LinuxSessionTests : IDisposable
         Assert.Equal("\"/a\\\\\"b\\\\`c\\\\$d\\\\\\\\e%%f\"", AutostartRegistration.Quote("/a\"b`c$d\\e%f"));
     }
 
+    // A line break in the path would start a new key in the entry.
+    [Fact]
+    public void Newline_path_not_written()
+    {
+        Autostart("/opt/x\nExec=evil").Apply(true);
+
+        Assert.False(File.Exists(EntryPath));
+    }
+
     [Fact]
     public void Disabling_removes_the_entry_and_tolerates_a_missing_one()
     {
